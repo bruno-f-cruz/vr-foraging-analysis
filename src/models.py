@@ -4,6 +4,12 @@ from pathlib import Path
 import datetime
 from typing import Optional
 from aind_behavior_vr_foraging import __semver__ as vrf_version
+import dataclasses
+import pandas as pd
+
+
+class ProcessingSettings(BaseModel):
+    downsample_position_to: Optional[float] = None  # Hz, if None, do not downsample
 
 
 class DataLoadingSettings(pydantic_settings.BaseSettings, yaml_file="sessions.yaml"):
@@ -13,6 +19,9 @@ class DataLoadingSettings(pydantic_settings.BaseSettings, yaml_file="sessions.ya
     )
     dataset_version: str = Field(
         default=vrf_version, description="Version of the dataset to use"
+    )
+    processing_settings: "ProcessingSettings" = Field(
+        default=ProcessingSettings(), validate_default=True
     )
 
     @classmethod
@@ -54,3 +63,28 @@ class SessionInfo(BaseModel):
     session_id: str = Field(..., description="Session identifier")
     date: datetime.date = Field(..., description="Date of the session")
     data_path: Path = Field(..., description="Path to the session data file")
+
+
+@dataclasses.dataclass
+class Trial:
+    odor_onset_time: float
+    choice_time: Optional[float]
+    reward_time: Optional[float]
+    reaction_duration: Optional[float]
+    patch_index: int
+    is_rewarded: Optional[bool]
+    p_reward: float
+
+
+@dataclasses.dataclass
+class ProcessedStreams:
+    position_velocity: pd.DataFrame
+
+
+@dataclasses.dataclass
+class SessionMetrics:
+    total_distance: float  # total distance travelled
+    reward_site_count: int  # number of reward sites observed
+    stop_count: int  # number of stops/harvest attempts
+    reward_count: int  # number of collected reward events
+    p_stop_per_odor: dict[int, float]  # probability of stopping per odor
