@@ -88,6 +88,7 @@ def plot_ethogram(
         s=50,
     )
     ax.set_xlabel("Time(s)")
+    ax.set_ylabel("Velocity (cm/s)")
     ax2.set_ylabel("Events")
     ax.set_xlim(window_start, window_end)
     handles, labels = ax.get_legend_handles_labels()
