@@ -76,6 +76,7 @@ class Trial:
     reaction_duration: Optional[float]
     patch_index: int
     is_rewarded: Optional[bool]
+    is_choice: bool
     p_reward: float
 
 

@@ -1,8 +1,12 @@
 from matplotlib import pyplot as plt
 import numpy as np
 from aind_behavior_vr_foraging import task_logic as vrf_task
-from typing import Optional
+from typing import Optional, Literal
 from .dataset import SessionDataset
+import pandas as pd
+import logging
+
+logger = logging.getLogger(__name__)
 
 patch_index_colormap = [
     "#1b9e77",
@@ -29,6 +33,7 @@ def get_color_from_site(site_label: str, patch_idx: int) -> str:
 
 def plot_ethogram(
     dataset: SessionDataset,
+    *,
     t_start: Optional[float] = None,
     t_end: Optional[float] = None,
     ax: Optional[plt.Axes] = None,
@@ -121,3 +126,48 @@ def plot_ethogram(
     ax2.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
 
     return ax, ax2
+
+
+def plot_aligned_to(
+    timestamps: np.ndarray | pd.Series | pd.DataFrame,
+    timeseries: pd.Series | pd.DataFrame,
+    *,
+    event_window: tuple[float, float] = (-1, 1),
+    ax: Optional[plt.Axes] = None,
+    plot_func: Literal["scatter", "plot"] = "plot",
+    **kwargs,
+) -> tuple[plt.Axes, list[pd.Series | pd.DataFrame]]:
+    _ax_passed = ax is not None
+    if ax is None:
+        fig, ax = plt.subplots(figsize=kwargs.pop("figsize", (6, 4)))
+
+    plot_method = getattr(ax, plot_func)
+
+    # Sanitize timestamps input
+    if isinstance(timestamps, np.ndarray):
+        assert timestamps.ndim == 1, "Timestamps array must be one-dimensional"
+    elif isinstance(timestamps, (pd.Series, pd.DataFrame)):
+        timestamps = timestamps.index.to_numpy()
+
+    plot_kwargs = kwargs.pop("plot_kwargs", {})
+    logger.debug(f"Plotting with kwargs: {plot_kwargs}")
+
+    snippets = []
+    for ts in timestamps:
+        _win = np.array(event_window) + ts
+        samples_in_window = timeseries.index[
+            (timeseries.index >= _win[0]) & (timeseries.index <= _win[1])
+        ]
+        snippet = timeseries.loc[samples_in_window]
+        snippets.append(snippet)
+        plot_method(
+            samples_in_window - ts,
+            snippet,
+            **plot_kwargs,
+        )
+    if not _ax_passed:
+        ax.set_xlabel("Time from event (s)")
+        ax.set_ylabel("Value")
+        ax.set_xlim(event_window)
+        ax.axvline(0, color="k", ls="--", lw=1)
+    return ax, snippets

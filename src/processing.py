@@ -203,6 +203,7 @@ def parse_trials(dataset: contraqctor.contract.Dataset) -> pd.DataFrame:
             patch_index=merged.iloc[i]["patch_index"],
             is_rewarded=len(water_deliveries_in_interval) == 1,
             p_reward=site_state_at_reward["Probability"],
+            is_choice=len(speaker_choices_in_interval) == 1,
         )
         trials.append(trial)
 
