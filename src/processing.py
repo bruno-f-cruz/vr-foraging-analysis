@@ -21,6 +21,8 @@ def compute_position_and_velocity(
         vrf_rig.AindVrForagingRig,
         dataset.at("Behavior").at("InputSchemas").at("Rig").load().data,
     )
+
+    ## Parse velocity and position
     treadmill_data = t.cast(
         pd.DataFrame,
         dataset.at("Behavior").at("HarpTreadmill").load().at("SensorData").load().data,
@@ -130,11 +132,12 @@ def parse_trials(dataset: contraqctor.contract.Dataset) -> pd.DataFrame:
         dataset.at("Behavior")
         .at("HarpOlfactometer")
         .load()
-        .at("OdorValveState")
+        .at("EndValveState")
         .load()
         .data
     )
-    odor_onset = odor_onset[odor_onset["MessageType"] == "WRITE"]
+    odor_onset = odor_onset[odor_onset["MessageType"] == "WRITE"]["EndValve0"]
+    odor_onset = odor_onset[(odor_onset) & (~odor_onset.shift(1, fill_value=False))]
 
     patches_state = (
         dataset.at("Behavior").at("SoftwareEvents").at("PatchState").load().data.copy()
@@ -149,12 +152,16 @@ def parse_trials(dataset: contraqctor.contract.Dataset) -> pd.DataFrame:
     for i in range(len(merged) - 1):
         this_timestamp = merged.index[i]
         next_timestamp = merged.index[i + 1]
-
+        logger.debug(f"Processing trial {i} at {this_timestamp} - {next_timestamp}")
         ## Find closest odor_onset after this_timestamp but before next_timestamp
         odor_onsets_in_interval = odor_onset[
             (odor_onset.index >= this_timestamp) & (odor_onset.index < next_timestamp)
         ]
-        assert len(odor_onsets_in_interval) == 1, "No odor onset in site..."
+        if len(odor_onsets_in_interval) == 0:
+            logger.warning(
+                f"No odor onset in site {i} interval...Using software event instead"
+            )
+            odor_onsets_in_interval = merged.iloc[this_timestamp]
 
         ## Find closest speaker_choice after this_timestamp but before next_timestamp
         speaker_choices_in_interval = speaker_choice[

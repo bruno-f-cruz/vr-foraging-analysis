@@ -33,7 +33,25 @@ def plot_ethogram(
     t_end: Optional[float] = None,
     ax: Optional[plt.Axes] = None,
     **kwargs,
-):
+) -> tuple[plt.Axes, plt.Axes]:
+    """Plot an ethogram of the session, showing the different sites, velocity, and events.
+    Parameters
+    ----------
+    dataset : SessionDataset
+        The session dataset to plot.
+    t_start : Optional[float], optional
+        The start time of the window to plot. If None, uses the start of the session., by default None
+    t_end : Optional[float], optional
+        The end time of the window to plot. If None, uses the end of the session., by default None
+    ax : Optional[plt.Axes], optional
+        The axes to plot on. If None, creates a new figure and axes., by default None
+    **kwargs
+        Additional keyword arguments to pass to plt.subplots if ax is None.
+    Returns
+    -------
+    tuple[plt.Axes, plt.Axes]
+        The axes with the ethogram and the axes with the events, respectively.
+    """
     window_start = dataset.sites["t_start"].iloc[0] if t_start is None else t_start
     window_end = dataset.sites["t_end"].iloc[-1] if t_end is None else t_end
 
@@ -91,9 +109,10 @@ def plot_ethogram(
     ax.set_ylabel("Velocity (cm/s)")
     ax2.set_ylabel("Events")
     ax.set_xlim(window_start, window_end)
+
     handles, labels = ax.get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
     ax.legend(
         by_label.values(), by_label.keys(), bbox_to_anchor=(1.05, 1), loc="upper left"
     )
-    return ax
+    return ax, ax2
