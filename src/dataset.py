@@ -4,7 +4,7 @@ import typing as t
 from pathlib import Path
 import datetime
 from .models import ProcessingSettings, SessionMetrics
-from .processing import compute_position_and_velocity, parse_trials
+from .processing import compute_position_and_velocity, parse_trials, process_lickometer
 
 from aind_behavior_vr_foraging import __semver__ as vrf_version
 from aind_behavior_vr_foraging.data_contract import dataset
@@ -104,7 +104,10 @@ def get_processed_data_streams(
     return ProcessedStreams(
         position_velocity=compute_position_and_velocity(
             dataset, downsample_to_hz=settings.downsample_position_to
-        )
+        ),
+        lick_onsets=process_lickometer(
+            dataset, refractory_period_s=settings.lickometer_refractory_period_s
+        ),
     )
 
 

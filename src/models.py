@@ -4,12 +4,15 @@ from pathlib import Path
 import datetime
 from typing import Optional
 from aind_behavior_vr_foraging import __semver__ as vrf_version
+from aind_behavior_vr_foraging import task_logic as vrf_task
 import dataclasses
 import pandas as pd
+import numpy as np
 
 
 class ProcessingSettings(BaseModel):
-    downsample_position_to: Optional[float] = None  # Hz, if None, do not downsample
+    downsample_position_to: Optional[float] = 60  # Hz, if None, do not downsample
+    lickometer_refractory_period_s: float = 0.02  # seconds
 
 
 class DataLoadingSettings(pydantic_settings.BaseSettings, yaml_file="sessions.yaml"):
@@ -79,6 +82,7 @@ class Trial:
 @dataclasses.dataclass
 class ProcessedStreams:
     position_velocity: pd.DataFrame
+    lick_onsets: np.ndarray
 
 
 @dataclasses.dataclass
@@ -88,3 +92,15 @@ class SessionMetrics:
     stop_count: int  # number of stops/harvest attempts
     reward_count: int  # number of collected reward events
     p_stop_per_odor: dict[int, float]  # probability of stopping per odor
+
+
+@dataclasses.dataclass
+class Site:
+    patch: dict
+    site: dict
+    patch_idx: int
+    site_label: vrf_task.VirtualSiteLabels
+    t_start: float
+    t_end: float
+
+

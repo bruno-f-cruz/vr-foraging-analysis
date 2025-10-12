@@ -5,7 +5,9 @@ import aind_behavior_vr_foraging.rig as vrf_rig
 import aind_behavior_vr_foraging.task_logic as vrf_task
 import logging
 import contraqctor
-from .models import Trial
+
+from .models import Trial, Site
+import dataclasses
 
 logger = logging.getLogger(__name__)
 
@@ -36,19 +38,42 @@ def compute_position_and_velocity(
     )
     position = (encoder - encoder.iloc[0]) * converting_factor
 
-    velocity = position.diff().fillna(0)
+    displacement = position.diff().fillna(0)
+    velocity = displacement / position.index.to_series().diff().fillna(1)
     df = pd.DataFrame({"position": position, "velocity": velocity})
+    if downsample_to_hz is None:
+        return df
     if not np.issubdtype(df.index.dtype, np.number):
         df.index = pd.to_numeric(df.index, errors="coerce")
     df.sort_index(inplace=True)
     df.index = pd.to_timedelta(df.index, unit="s")
-    if downsample_to_hz is None:
-        return df
-    dt = 1 / downsample_to_hz
-    df = df.resample(f"{dt}s", label="right", closed="right").mean()
+
+    # Compute interval as a Timedelta
+    dt = pd.to_timedelta(1.0 / downsample_to_hz, unit="s")
+
+    # Use timedelta directly
+    df = df.resample(dt, label="right", closed="right").mean()
     df.dropna(inplace=True)
     df.index = df.index.total_seconds()
     return df
+
+
+def process_lickometer(
+    dataset: contraqctor.contract.Dataset, *, refractory_period_s: float = 0.02
+) -> np.ndarray:
+    lickometer = (
+        dataset.at("Behavior")
+        .at("HarpLickometer")
+        .load()
+        .at("LickState")
+        .load()
+        .data.copy()
+    )
+    lickometer = lickometer[lickometer["MessageType"] == "EVENT"]["Channel0"]
+    lick_onsets = lickometer[
+        (lickometer) & (~lickometer.shift(1, fill_value=False))
+    ].index
+    return lick_onsets.values
 
 
 def parse_trials(dataset: contraqctor.contract.Dataset) -> pd.DataFrame:
@@ -214,3 +239,48 @@ def get_closest_from_timestamp(
     else:
         raise ValueError(f"Unknown search_mode: {search_mode}")
     return df.index[idxs]
+
+
+def process_sites(dataset: contraqctor.contract.Dataset) -> pd.DataFrame:
+    sites = (
+        dataset.at("Behavior").at("SoftwareEvents").at("ActiveSite").load().data.copy()
+    )
+    patches = (
+        dataset.at("Behavior").at("SoftwareEvents").at("ActivePatch").load().data.copy()
+    )
+
+    # Ensure patches and sites are sorted by index
+    sites = sites.sort_index()
+    patches = patches.sort_index()
+
+    # Use merge_asof to efficiently find the closest preceding patch for each site
+    sites = pd.merge_asof(
+        sites.sort_index(),
+        patches[["data"]].rename(columns={"data": "patch_data"}).sort_index(),
+        left_index=True,
+        right_index=True,
+        direction="backward",
+    )
+    sites["label"] = sites["data"].apply(lambda d: d["label"]).values
+    sites["patch_idx"] = sites["patch_data"].apply(lambda d: d["state_index"]).values
+
+    all_sites = []
+    for i in range(len(sites)):
+        all_sites.append(
+            Site(
+                patch=sites["patch_data"].iloc[i],
+                site=sites["data"].iloc[i],
+                patch_idx=sites["patch_idx"].iloc[i],
+                site_label=sites["label"].iloc[i],
+                t_start=sites.index[i],
+                t_end=sites.index[i + 1] if i < len(sites) - 1 else sites.index[i],
+            )
+        )
+    df = pd.DataFrame([dataclasses.asdict(site) for site in all_sites])
+    df["plot_label"] = df.apply(
+        lambda row: f"{row['site_label']}_{row['patch_idx']}"
+        if row["site_label"] == vrf_task.VirtualSiteLabels.REWARDSITE
+        else row["site_label"],
+        axis=1,
+    )
+    return df
