@@ -102,5 +102,3 @@ class Site:
     site_label: vrf_task.VirtualSiteLabels
     t_start: float
     t_end: float
-
-
