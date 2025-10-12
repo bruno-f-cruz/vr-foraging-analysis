@@ -299,3 +299,63 @@ def plot_aligned_to_grouped_by(
         )
         _summary_data[_tup] = df_result
     return ax, _summary_data
+
+
+def plot_session_trials(
+    dataset: SessionDataset, *, ax: Optional[plt.Axes] = None, **kwargs
+) -> plt.Axes:
+    passed_ax = ax is not None
+    if ax is None:
+        fig, ax = plt.subplots(figsize=kwargs.pop("figsize", (10, 5)))
+
+    trials = dataset.trials
+
+    prob_ax = ax.twinx()
+    yy_labels = []
+    yy_ticks = []
+    for patch_index in trials["patch_index"].unique():
+        subset = trials[trials["patch_index"] == patch_index]
+
+        ys_gain = 0.1
+        yy_ticks.append(patch_index + ys_gain / 2)
+        yy_labels.append(patch_index)
+
+        ax.scatter(
+            subset.index,
+            subset["patch_index"] + subset["is_choice"] * ys_gain,
+            color=patch_index_colormap[patch_index],
+            label=patch_index,
+            alpha=1,
+            linewidths=subset["is_choice"] + 0.5,
+            s=subset["is_choice"] * 20 + 50,
+            marker="|",
+        )
+
+        mov_average = subset["is_choice"].rolling(window=10, min_periods=1).mean()
+        prob_ax.plot(
+            subset.index,
+            mov_average,
+            color=patch_index_colormap[patch_index],
+            label=f"PChoice(patch={patch_index})",
+        )
+
+        p_reward = subset["p_reward"]
+        prob_ax.plot(
+            subset.index,
+            p_reward,
+            color=patch_index_colormap[patch_index],
+            alpha=0.5,
+            linestyle="--",
+            label=f"PReward(patch={patch_index})",
+        )
+
+    if not passed_ax:
+        ax.set_yticks(yy_ticks)
+        ax.set_yticklabels((f"Patch {label}" for label in yy_labels))
+        ax.set_xlabel("Trial")
+        prob_ax.set_ylabel("Probability")
+        prob_ax.set_yticks([0, 0.5, 1.0])
+        prob_ax.set_ylim(-0.1, 1.1)
+        prob_ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+        prob_ax.set_ylabel("Choice Probability")
+    return ax
