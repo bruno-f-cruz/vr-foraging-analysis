@@ -1,10 +1,14 @@
 from matplotlib import pyplot as plt
 import numpy as np
 from aind_behavior_vr_foraging import task_logic as vrf_task
-from typing import Optional, Literal
+from typing import Optional, Literal, Any, Callable
 from .dataset import SessionDataset
 import pandas as pd
 import logging
+from functools import partial
+
+
+from itertools import cycle
 
 logger = logging.getLogger(__name__)
 
@@ -172,3 +176,126 @@ def plot_aligned_to(
         ax.axvline(0, color="k", ls="--", lw=1)
 
     return ax, snippets
+
+
+def _get_cycle_cmap(n: int) -> cycle:
+    colormap_obj = plt.get_cmap("tab10")
+    cmap = [colormap_obj(i / (n - 1)) for i in range(n)]
+    return cycle(cmap)
+
+
+def _get_default_plot_kwargs(cmap: cycle) -> dict[str, Any]:
+    return {
+        "color": next(cmap),
+        "alpha": 0.1,
+        "linewidth": 1,
+    }
+
+
+def plot_aligned_to_grouped_by(
+    timestamp_df: pd.DataFrame,
+    timeseries: pd.Series,
+    by: list[Any] | None = None,
+    timestamp_column: str | None = None,
+    plot_kwargs: Optional[dict[tuple[Any, ...], dict[str, Any]]] = None,
+    *,
+    agg_plot_kwarg_modifier: dict[str, Any] = {"alpha": 1, "linewidth": 2},
+    agg_spread_kwarg_modifier: dict[str, Any] = {"alpha": 0.1, "linewidth": 0},
+    event_window: tuple[float, float] = (-1, 1),
+    ax: Optional[plt.Axes] = None,
+    bin_width: float = 0.025,
+    agg_fnc: Callable[[np.ndarray], np.ndarray] = partial(np.nanmean, axis=1),
+    agg_spread_fnc: Callable[[np.ndarray], np.ndarray] = partial(
+        np.nanpercentile, q=[2.5, 97.5], axis=1
+    ),
+    **kwargs,
+) -> tuple[plt.Axes, dict[Any, pd.DataFrame]]:
+    _ax_passed = ax is not None
+
+    _anonymous_cmap = _get_cycle_cmap(10)
+
+    by = by or []
+    plot_kwargs = plot_kwargs or {}
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=kwargs.pop("figsize", (6, 4)))
+
+    _summary_data = {}
+    for _tup, df in timestamp_df.groupby(by):
+        if timestamp_column is not None:
+            timestamps = df[timestamp_column].to_numpy()
+        else:
+            timestamps = df.index.to_numpy()
+
+        if _tup not in plot_kwargs:
+            logging.warning(
+                f"No plot_kwargs specified for group {_tup}, using defaults."
+            )
+            _these_plot_kwargs = _get_default_plot_kwargs(_anonymous_cmap)
+        else:
+            _these_plot_kwargs = plot_kwargs[_tup]
+
+        ax, data = plot_aligned_to(
+            timestamps,
+            timeseries,
+            event_window=event_window,
+            plot_kwargs=_these_plot_kwargs,
+            plot_func="plot",
+            ax=ax,
+        )
+        # normalize each snippet to event time
+        for d, onset in zip(data, timestamps):
+            d.index = d.index - onset
+        new_index = pd.Index(
+            np.arange(
+                min(s.index.min() for s in data),
+                max(s.index.max() for s in data),
+                bin_width,
+            ),
+        )
+
+        binned_data = np.full((len(new_index), len(data)), np.nan)
+
+        for i, s in enumerate(data):
+            binned_data[:, i] = np.interp(new_index, s.index, s.values)
+
+        binned_mean = agg_fnc(binned_data)
+        binned_spread = agg_spread_fnc(binned_data)
+        ax.plot(
+            new_index,
+            binned_mean,
+            label=", ".join(f"{col}={val}" for col, val in zip(by, _tup))
+            if by
+            else str(_tup),
+            **{**_these_plot_kwargs, **agg_plot_kwarg_modifier},
+        )
+        ax.fill_between(
+            new_index,
+            binned_spread[0],
+            binned_spread[1],
+            **{**_these_plot_kwargs, **agg_spread_kwarg_modifier},
+        )
+
+    if not _ax_passed:
+        ax.axvline(0, color="k", linestyle="--", linewidth=1)
+        ax.set_xlabel("Time from event (s)")
+        ax.set_ylabel(
+            str(
+                timeseries.columns[0]
+                if isinstance(timeseries, pd.DataFrame)
+                else timeseries.name
+            )
+        )
+        ax.set_xlim(event_window)
+        ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left", borderaxespad=0.0)
+
+        df_result = pd.DataFrame(
+            {
+                "time": new_index,
+                "mean": binned_mean,
+                "lower": binned_spread[0],
+                "upper": binned_spread[1],
+            }
+        )
+        _summary_data[_tup] = df_result
+    return ax, _summary_data
