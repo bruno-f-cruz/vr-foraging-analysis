@@ -170,4 +170,5 @@ def plot_aligned_to(
         ax.set_ylabel("Value")
         ax.set_xlim(event_window)
         ax.axvline(0, color="k", ls="--", lw=1)
+
     return ax, snippets

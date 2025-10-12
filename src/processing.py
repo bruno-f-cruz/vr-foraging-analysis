@@ -208,7 +208,6 @@ def parse_trials(dataset: contraqctor.contract.Dataset) -> pd.DataFrame:
         trials.append(trial)
 
     trials_df = pd.DataFrame([trial.__dict__ for trial in trials])
-    trials_df.set_index("odor_onset_time", inplace=True)
     return trials_df
 
 
