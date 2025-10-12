@@ -4,7 +4,12 @@ import typing as t
 from pathlib import Path
 import datetime
 from .models import ProcessingSettings, SessionMetrics
-from .processing import compute_position_and_velocity, parse_trials, process_lickometer
+from .processing import (
+    compute_position_and_velocity,
+    parse_trials,
+    process_lickometer,
+    process_sites,
+)
 
 from aind_behavior_vr_foraging import __semver__ as vrf_version
 from aind_behavior_vr_foraging.data_contract import dataset
@@ -75,12 +80,16 @@ class SessionDataset:
     processed_streams: "ProcessedStreams" = dataclasses.field(init=False)
     session_metrics: "SessionMetrics" = dataclasses.field(init=False)
     trials: pd.DataFrame = dataclasses.field(init=False)
+    sites: pd.DataFrame = dataclasses.field(init=False)
 
     def __post_init__(self):
         self.dataset = dataset(self.session_info.data_path, self.dataset_version)
 
     def add_processed_streams(self, settings: ProcessingSettings):
         self.processed_streams = get_processed_data_streams(self.dataset, settings)
+
+    def add_sites(self):
+        self.sites = process_sites(self.dataset)
 
     def add_trials_and_metrics(self):
         self.trials = parse_trials(self.dataset)
@@ -118,4 +127,5 @@ def make_session_dataset(
     session_dataset = SessionDataset(session_info)
     session_dataset.add_processed_streams(processing_settings)
     session_dataset.add_trials_and_metrics()
+    session_dataset.add_sites()
     return session_dataset

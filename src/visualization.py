@@ -1,5 +1,4 @@
 from matplotlib import pyplot as plt
-import pandas as pd
 import numpy as np
 from aind_behavior_vr_foraging import task_logic as vrf_task
 from typing import Optional
@@ -29,21 +28,22 @@ def get_color_from_site(site_label: str, patch_idx: int) -> str:
 
 
 def plot_ethogram(
-    sites: pd.DataFrame,
     dataset: SessionDataset,
     t_start: Optional[float] = None,
     t_end: Optional[float] = None,
     ax: Optional[plt.Axes] = None,
     **kwargs,
 ):
-    window_start = sites["t_start"].iloc[0] if t_start is None else t_start
-    window_end = sites["t_end"].iloc[-1] if t_end is None else t_end
+    window_start = dataset.sites["t_start"].iloc[0] if t_start is None else t_start
+    window_end = dataset.sites["t_end"].iloc[-1] if t_end is None else t_end
 
     if ax is None:
         fig, ax = plt.subplots(figsize=kwargs.pop("figsize", (6, 4)))
 
-    mask = (sites["t_end"] >= window_start) & (sites["t_start"] <= window_end)
-    for i, row in sites[mask].iterrows():
+    mask = (dataset.sites["t_end"] >= window_start) & (
+        dataset.sites["t_start"] <= window_end
+    )
+    for i, row in dataset.sites[mask].iterrows():
         color = get_color_from_site(row["site_label"], row["patch_idx"])
         ax.axvspan(
             row["t_start"],
