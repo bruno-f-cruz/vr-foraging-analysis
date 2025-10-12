@@ -161,7 +161,7 @@ def parse_trials(dataset: contraqctor.contract.Dataset) -> pd.DataFrame:
             logger.warning(
                 f"No odor onset in site {i} interval...Using software event instead"
             )
-            odor_onsets_in_interval = merged.iloc[this_timestamp]
+            odor_onsets_in_interval = merged.loc[[this_timestamp]]
 
         ## Find closest speaker_choice after this_timestamp but before next_timestamp
         speaker_choices_in_interval = speaker_choice[
