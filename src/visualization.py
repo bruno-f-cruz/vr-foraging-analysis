@@ -81,7 +81,7 @@ def plot_ethogram(
     ax2 = ax.twinx()
     ax2.set_ylim(0, 1)
     ax2.scatter(
-        trials["choice_time"].index,
+        trials["choice_time"],
         np.ones_like(trials["choice_time"]) * 0.5,
         color="C3",
         label="Choices",
@@ -90,7 +90,7 @@ def plot_ethogram(
         lw=2,
     )
     ax2.scatter(
-        trials["reward_time"].index,
+        trials["reward_time"],
         np.ones_like(trials["reward_time"]) * 0.5,
         color="blue",
         label="Rewards",
@@ -110,9 +110,14 @@ def plot_ethogram(
     ax2.set_ylabel("Events")
     ax.set_xlim(window_start, window_end)
 
+    # legend 1
     handles, labels = ax.get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
     ax.legend(
-        by_label.values(), by_label.keys(), bbox_to_anchor=(1.05, 1), loc="upper left"
+        by_label.values(), by_label.keys(), bbox_to_anchor=(-0.05, 1), loc="upper right"
     )
+
+    # legend 2
+    ax2.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+
     return ax, ax2
