@@ -61,11 +61,12 @@ class FilterOn(BaseModel):
     )
 
 
-class SessionInfo(BaseModel):
-    subject: str = Field(..., description="Subject identifier")
-    session_id: str = Field(..., description="Session identifier")
-    date: datetime.date = Field(..., description="Date of the session")
-    data_path: Path = Field(..., description="Path to the session data file")
+@dataclasses.dataclass
+class SessionInfo:
+    subject: str
+    session_id: str
+    date: datetime.date
+    data_path: Path
 
 
 @dataclasses.dataclass
