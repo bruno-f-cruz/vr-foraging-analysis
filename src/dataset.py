@@ -16,6 +16,7 @@ from aind_behavior_vr_foraging.data_contract import dataset
 import contraqctor
 import dataclasses
 import pandas as pd
+import pytz
 
 logger = logging.getLogger(__name__)
 
@@ -42,12 +43,29 @@ def find_session_info(
 
 
 def create_session_info(session_path: Path) -> SessionInfo:
-    """Uses session names in the form of: 808728_2025-10-09T153828Z"""
-    subject, date = session_path.stem.split("_")
+    """Uses session names in the form of:
+    808728_2025-10-09T153828Z
+    or scicomp's weird format: behavior_789917_2025-10-20_20-34-17"""
+
+    parts = session_path.stem.split("_")
+    if parts[0] == "behavior":
+        subject = parts[1]
+        date_str = f"{parts[2]}T{parts[3].replace('-', ':')}"
+        # Parse as Seattle timezone and convert to date
+        seattle_tz = pytz.timezone("America/Los_Angeles")
+        dt = datetime.datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S")
+        dt = seattle_tz.localize(dt)
+        date = dt.date()
+    else:
+        # Handle standard format: 808728_2025-10-09T153828Z
+        subject = parts[0]
+        date_str = parts[1]
+        date = datetime.datetime.fromisoformat(date_str).date()
+
     return SessionInfo(
         subject=subject,
         session_id=session_path.stem,
-        date=datetime.datetime.fromisoformat(date).date(),
+        date=date,
         data_path=session_path,
     )
 

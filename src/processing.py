@@ -146,6 +146,17 @@ def parse_trials(dataset: contraqctor.contract.Dataset) -> pd.DataFrame:
     expanded.index = patches_state.index
     patches_state = patches_state.join(expanded)
 
+    patches_state_at_reward = (
+        dataset.at("Behavior")
+        .at("SoftwareEvents")
+        .at("PatchStateAtReward")
+        .load()
+        .data.copy()
+    )
+    expanded = pd.json_normalize(patches_state_at_reward["data"])
+    expanded.index = patches_state_at_reward.index
+    patches_state_at_reward = patches_state_at_reward.join(expanded)
+
     trials = []
 
     i = 0
@@ -182,30 +193,33 @@ def parse_trials(dataset: contraqctor.contract.Dataset) -> pd.DataFrame:
             water_deliveries_in_interval = water_deliveries_in_interval.iloc[:1]
 
         # Get the FIRST patch state AFTER the this_timestamp
-        site_state_at_reward = patches_state[
-            (patches_state.index > this_timestamp)
-            & (patches_state["PatchId"] == merged.iloc[i]["patch_index"])
-        ].iloc[0]
-
-        trial = Trial(
-            odor_onset_time=odor_onsets_in_interval.index[0],
-            choice_time=speaker_choices_in_interval.index[0]
-            if len(speaker_choices_in_interval) == 1
-            else None,
-            reward_time=water_deliveries_in_interval.index[0]
-            if len(water_deliveries_in_interval) == 1
-            else None,
-            reaction_duration=(
-                speaker_choices_in_interval.index[0] - odor_onsets_in_interval.index[0]
+        site_state_at_reward = patches_state_at_reward[
+            (patches_state_at_reward.index > this_timestamp)
+            & (patches_state_at_reward["PatchId"] == merged.iloc[i]["patch_index"])
+        ]
+        if len(site_state_at_reward) > 0:
+            site_state_at_reward = site_state_at_reward.iloc[0]
+            # TODO this is because of block switches...
+            trial = Trial(
+                odor_onset_time=odor_onsets_in_interval.index[0],
+                choice_time=speaker_choices_in_interval.index[0]
+                if len(speaker_choices_in_interval) == 1
+                else None,
+                reward_time=water_deliveries_in_interval.index[0]
+                if len(water_deliveries_in_interval) == 1
+                else None,
+                reaction_duration=(
+                    speaker_choices_in_interval.index[0]
+                    - odor_onsets_in_interval.index[0]
+                )
+                if len(speaker_choices_in_interval) == 1
+                else None,
+                patch_index=merged.iloc[i]["patch_index"],
+                is_rewarded=len(water_deliveries_in_interval) == 1,
+                p_reward=site_state_at_reward["Probability"],
+                is_choice=len(speaker_choices_in_interval) == 1,
             )
-            if len(speaker_choices_in_interval) == 1
-            else None,
-            patch_index=merged.iloc[i]["patch_index"],
-            is_rewarded=len(water_deliveries_in_interval) == 1,
-            p_reward=site_state_at_reward["Probability"],
-            is_choice=len(speaker_choices_in_interval) == 1,
-        )
-        trials.append(trial)
+            trials.append(trial)
 
     trials_df = pd.DataFrame([trial.__dict__ for trial in trials])
     return trials_df

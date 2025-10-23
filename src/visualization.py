@@ -302,7 +302,11 @@ def plot_aligned_to_grouped_by(
 
 
 def plot_session_trials(
-    dataset: SessionDataset, *, ax: Optional[plt.Axes] = None, **kwargs
+    dataset: SessionDataset,
+    *,
+    alpha: float = 0.5,
+    ax: Optional[plt.Axes] = None,
+    **kwargs,
 ) -> plt.Axes:
     passed_ax = ax is not None
     if ax is None:
@@ -331,7 +335,7 @@ def plot_session_trials(
             marker="|",
         )
 
-        mov_average = subset["is_choice"].rolling(window=10, min_periods=1).mean()
+        mov_average = subset["is_choice"].ewm(alpha=alpha, adjust=False).mean()
         prob_ax.plot(
             subset.index,
             mov_average,
