@@ -1,0 +1,11 @@
+root_path: '\\allen\aind\scratch\vr-foraging\data'
+subject_filters:
+  "808619":
+    start_date: 2025-10-22
+  "808728":
+    start_date: 2025-10-22
+  "789917":
+    start_date: 2025-10-22
+processing_settings:
+  downsample_position_to: 60
+  lickometer_refractory_period_s: 0.02
