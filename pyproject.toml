@@ -13,6 +13,3 @@ dependencies = [
     "aind-behavior-vr-foraging[data]",
     "pydantic<2.12",
 ]
-
-[tool.uv.sources]
-aind-behavior-vr-foraging = { git = "https://github.com/AllenNeuralDynamics/Aind.Behavior.VrForaging.git", tag = "v0.6.0rc8"}
