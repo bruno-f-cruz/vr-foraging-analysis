@@ -16,7 +16,7 @@ class ProcessingSettings(BaseModel):
 
 
 class DataLoadingSettings(pydantic_settings.BaseSettings, yaml_file="sessions.yaml"):
-    root_path: Path = Field(..., description="Root path to the data directory")
+    root_path: list[Path] = Field(..., description="Root path to the data directory")
     subject_filters: dict[str, "FilterOn"] = Field(
         default_factory=dict, description="Dictionary of subject filters"
     )

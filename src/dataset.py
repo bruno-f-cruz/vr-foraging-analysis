@@ -1,6 +1,5 @@
 from .models import DataLoadingSettings, ProcessedStreams, SessionInfo, FilterOn
 import logging
-import typing as t
 from pathlib import Path
 import datetime
 from .models import ProcessingSettings, SessionMetrics
@@ -23,23 +22,24 @@ logger = logging.getLogger(__name__)
 
 def find_session_info(
     settings: DataLoadingSettings,
-) -> t.Generator[SessionInfo, None, None]:
-    for subject, filter_on in settings.subject_filters.items():
-        if not (settings.root_path / subject).exists():
-            logger.warning(
-                f"Subject path does not exist: {settings.root_path / subject}"
+) -> list[SessionInfo]:
+    unique_sessions: list[SessionInfo] = []
+    for root_path in settings.root_path:
+        for subject, filter_on in settings.subject_filters.items():
+            subject_path = root_path / subject
+            if not subject_path.exists():
+                logger.debug(f"Subject path does not exist: {subject_path}")
+                continue
+            logger.debug(f"Subject: {subject}, Filter: {filter_on}")
+            available_sessions = map(create_session_info, subject_path.iterdir())
+            filtered_sessions = (
+                session
+                for session in available_sessions
+                if is_accept_session(session, filter_on)
+                and session.session_id not in [s.session_id for s in unique_sessions]
             )
-            continue
-        logger.debug(f"Subject: {subject}, Filter: {filter_on}")
-        available_sessions = map(
-            create_session_info, (settings.root_path / subject).iterdir()
-        )
-        filtered_sessions = (
-            session
-            for session in available_sessions
-            if is_accept_session(session, filter_on)
-        )
-        yield from filtered_sessions
+            unique_sessions.extend(filtered_sessions)
+    return unique_sessions
 
 
 def create_session_info(session_path: Path) -> SessionInfo:
