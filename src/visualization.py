@@ -367,7 +367,7 @@ def plot_session_trials(
 
 
 @contextmanager
-def bedazzle(
+def a_lot_of_style(
     font_scale=1.2,
     line_width=2,
     grid=True,
