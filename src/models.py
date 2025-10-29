@@ -94,6 +94,7 @@ class SessionMetrics:
     stop_count: int  # number of stops/harvest attempts
     reward_count: int  # number of collected reward events
     p_stop_per_odor: dict[int, float]  # probability of stopping per odor
+    total_reward_ml: float = 0.0  # total reward collected in mL
 
 
 @dataclasses.dataclass

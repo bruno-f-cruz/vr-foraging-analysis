@@ -111,6 +111,7 @@ class SessionDataset:
 
     def add_trials_and_metrics(self):
         self.trials = parse_trials(self.dataset)
+
         self.session_metrics = SessionMetrics(
             total_distance=self.processed_streams.position_velocity["velocity"]
             .abs()
@@ -122,6 +123,10 @@ class SessionDataset:
                 int(patch_id): df["reward_time"].notna().sum() / len(df)
                 for patch_id, df in self.trials.groupby("patch_index")
             },
+            total_reward_ml=self.dataset["Behavior"]["SoftwareEvents"]["GiveReward"]
+            .read()["data"]
+            .sum()
+            * 1e-3,
         )
 
 
