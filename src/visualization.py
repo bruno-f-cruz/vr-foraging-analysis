@@ -6,6 +6,7 @@ from .dataset import SessionDataset
 import pandas as pd
 import logging
 from functools import partial
+from contextlib import contextmanager
 
 
 from itertools import cycle
@@ -363,3 +364,52 @@ def plot_session_trials(
         prob_ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
         prob_ax.set_ylabel("Choice Probability")
     return ax
+
+
+@contextmanager
+def bedazzle(
+    font_scale=1.2,
+    line_width=2,
+    grid=True,
+    despine=True,
+    ticks_out=True,
+):
+    old_params = plt.rcParams.copy()
+
+    plt.style.use("default")
+    plt.rcParams.update(
+        {
+            # Fonts
+            "font.size": 10 * font_scale,
+            "axes.titlesize": 12 * font_scale,
+            "axes.labelsize": 11 * font_scale,
+            "xtick.labelsize": 9 * font_scale,
+            "ytick.labelsize": 9 * font_scale,
+            "legend.fontsize": 9 * font_scale,
+            "font.family": "DejaVu Sans",
+            # Lines and markers
+            "lines.linewidth": line_width,
+            "lines.markersize": 6 * font_scale,
+            # Axes and grid
+            "axes.spines.top": not despine,
+            "axes.spines.right": not despine,
+            "axes.grid": grid,
+            "grid.linestyle": "--",
+            "grid.alpha": 0.3,
+            # Ticks
+            "xtick.direction": "out" if ticks_out else "in",
+            "ytick.direction": "out" if ticks_out else "in",
+            "xtick.major.size": 4 * font_scale,
+            "ytick.major.size": 4 * font_scale,
+            # Figure
+            "figure.dpi": 150,
+            "savefig.dpi": 300,
+            "figure.facecolor": "white",
+            "axes.facecolor": "white",
+        }
+    )
+
+    try:
+        yield
+    finally:
+        plt.rcParams.update(old_params)
