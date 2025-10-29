@@ -157,7 +157,7 @@ def parse_trials(dataset: contraqctor.contract.Dataset) -> pd.DataFrame:
     expanded.index = patches_state_at_reward.index
     patches_state_at_reward = patches_state_at_reward.join(expanded)
 
-    trials = []
+    trials: list[Trial] = []
 
     i = 0
     for i in range(len(merged) - 1):
@@ -220,6 +220,19 @@ def parse_trials(dataset: contraqctor.contract.Dataset) -> pd.DataFrame:
                 is_choice=len(speaker_choices_in_interval) == 1,
             )
             trials.append(trial)
+        else:
+            trials.append(
+                Trial(
+                    odor_onset_time=odor_onsets_in_interval.index[0],
+                    choice_time=None,
+                    reward_time=None,
+                    reaction_duration=None,
+                    patch_index=merged.iloc[i]["patch_index"],
+                    is_rewarded=None,
+                    p_reward=np.nan,
+                    is_choice=False,
+                )
+            )
 
     trials_df = pd.DataFrame([trial.__dict__ for trial in trials])
     return trials_df
