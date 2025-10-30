@@ -322,12 +322,13 @@ def plot_session_trials(
         subset = trials[trials["patch_index"] == patch_index]
 
         ys_gain = 0.1
-        yy_ticks.append(patch_index + ys_gain / 2)
+        yy_offset = -0.2 if patch_index == 0 else +0.2  # first patch gets an offset
+        yy_ticks.append(patch_index + ys_gain / 2 + yy_offset)
         yy_labels.append(patch_index)
 
         ax.scatter(
             subset.index,
-            subset["patch_index"] + subset["is_choice"] * ys_gain,
+            subset["patch_index"] + subset["is_choice"] * ys_gain + yy_offset,
             color=patch_index_colormap[patch_index],
             label=patch_index,
             alpha=1,
@@ -345,7 +346,7 @@ def plot_session_trials(
         )
 
         p_reward = subset["p_reward"]
-        prob_ax.plot(
+        prob_ax.scatter(
             subset.index,
             p_reward,
             color=patch_index_colormap[patch_index],
@@ -360,7 +361,7 @@ def plot_session_trials(
         ax.set_xlabel("Trial")
         prob_ax.set_ylabel("Probability")
         prob_ax.set_yticks([0, 0.5, 1.0])
-        prob_ax.set_ylim(-0.1, 1.1)
+        prob_ax.set_ylim(-0.5, 1.5)
         prob_ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
         prob_ax.set_ylabel("Choice Probability")
     return ax
