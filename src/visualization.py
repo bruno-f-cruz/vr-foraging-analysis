@@ -337,6 +337,20 @@ def plot_session_trials(
             marker="|",
         )
 
+        rewarded_filter = (subset["is_choice"] == 1) & (subset["is_rewarded"] == 1)
+        ax.scatter(
+            subset[rewarded_filter].index,
+            subset[rewarded_filter]["patch_index"]
+            + subset[rewarded_filter]["is_choice"] * ys_gain * 2
+            + yy_offset,
+            color=patch_index_colormap[patch_index],
+            label=patch_index,
+            alpha=1,
+            linewidths=1,
+            s=subset[rewarded_filter]["is_choice"] * 20,
+            marker="v",
+        )
+
         mov_average = subset["is_choice"].ewm(alpha=alpha, adjust=False).mean()
         prob_ax.plot(
             subset.index,
