@@ -1,4 +1,4 @@
-root_path: ['c:/data/assets']
+root_path: ['C:\Data\single-site-dataset']
 filters:
   - subjects: ['808728']
     start_date: 2025-10-01

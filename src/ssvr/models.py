@@ -8,7 +8,7 @@ from aind_behavior_vr_foraging import task_logic as vrf_task
 import dataclasses
 import pandas as pd
 import numpy as np
-
+import semver
 
 class ProcessingSettings(BaseModel):
     downsample_position_to: Optional[float] = 60  # Hz, if None, do not downsample
@@ -71,6 +71,7 @@ class SessionInfo:
     session_id: str
     date: datetime.date
     data_path: Path
+    version: semver.Version
 
 
 @dataclasses.dataclass
@@ -97,7 +98,9 @@ class SessionMetrics:
     reward_site_count: int  # number of reward sites observed
     stop_count: int  # number of stops/harvest attempts
     reward_count: int  # number of collected reward events
+    session_duration: datetime.timedelta # duration of the session
     p_stop_per_odor: dict[int, float]  # probability of stopping per odor
+
     total_reward_ml: float = 0.0  # total reward collected in mL
 
 

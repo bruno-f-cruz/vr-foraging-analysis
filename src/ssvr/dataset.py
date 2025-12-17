@@ -15,6 +15,8 @@ from aind_behavior_vr_foraging.data_contract import dataset
 import contraqctor
 import dataclasses
 import pandas as pd
+import json
+import semver
 
 logger = logging.getLogger(__name__)
 
@@ -31,9 +33,10 @@ def find_session_info(
         for session in all_sessions:
             if session.session_id in [s.session_id for s in unique_sessions]:
                 continue
-            if any(
+            
+            if (len(settings.filters) == 0) or (any(
                 is_accept_session(session, filter_on) for filter_on in settings.filters
-            ):
+            )):
                 unique_sessions.append(session)
     return unique_sessions
 
@@ -58,11 +61,16 @@ def create_session_info(session_path: Path) -> SessionInfo:
         date_str = parts[1]
         date = datetime.datetime.fromisoformat(date_str).date()
 
+    task_logic_schema = session_path / "Behavior" / "Logs" / "tasklogic_input.json"
+    _json = json.loads(task_logic_schema.read_text())
+    version = semver.Version.parse(_json["version"])
+
     return SessionInfo(
         subject=subject,
         session_id=session_path.stem,
         date=date,
         data_path=session_path,
+        version=version,
     )
 
 
@@ -94,6 +102,7 @@ def is_accept_session(session: SessionInfo, filter: FilterOn):
 @dataclasses.dataclass
 class SessionDataset:
     session_info: SessionInfo
+    processing_settings: ProcessingSettings = dataclasses.field(default_factory=ProcessingSettings)
     dataset_version: str = vrf_version
     dataset: contraqctor.contract.Dataset = dataclasses.field(init=False)
     processed_streams: "ProcessedStreams" = dataclasses.field(init=False)
@@ -103,9 +112,12 @@ class SessionDataset:
 
     def __post_init__(self):
         self.dataset = dataset(self.session_info.data_path, self.dataset_version)
+        self.add_processed_streams()
+        self.add_sites()
+        self.add_trials_and_metrics()
 
-    def add_processed_streams(self, settings: ProcessingSettings):
-        self.processed_streams = get_processed_data_streams(self.dataset, settings)
+    def add_processed_streams(self):
+        self.processed_streams = get_processed_data_streams(self.dataset, self.processing_settings)
 
     def add_sites(self):
         self.sites = process_sites(self.dataset)
@@ -124,11 +136,18 @@ class SessionDataset:
                 int(patch_id): df["reward_time"].notna().sum() / len(df)
                 for patch_id, df in self.trials.groupby("patch_index")
             },
+            session_duration=self._get_session_duration(self.dataset),
             total_reward_ml=self.dataset["Behavior"]["SoftwareEvents"]["GiveReward"]
             .read()["data"]
             .sum()
             * 1e-3,
         )
+    
+    @staticmethod
+    def _get_session_duration(dataset: contraqctor.contract.Dataset) -> datetime.timedelta:
+        clk_timestamps = dataset["Behavior"]["HarpClockGenerator"]["Counter"].data
+        delta = clk_timestamps.index[-1] - clk_timestamps.index[0]
+        return datetime.timedelta(seconds=delta)
 
 
 def get_processed_data_streams(
@@ -142,14 +161,3 @@ def get_processed_data_streams(
             dataset, refractory_period_s=settings.lickometer_refractory_period_s
         ),
     )
-
-
-def make_session_dataset(
-    session_info: SessionInfo,
-    processing_settings: ProcessingSettings,
-) -> SessionDataset:
-    session_dataset = SessionDataset(session_info)
-    session_dataset.add_processed_streams(processing_settings)
-    session_dataset.add_trials_and_metrics()
-    session_dataset.add_sites()
-    return session_dataset

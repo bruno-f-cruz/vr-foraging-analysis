@@ -2,7 +2,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 from aind_behavior_vr_foraging import task_logic as vrf_task
 from typing import Optional, Literal, Any, Callable
-from .dataset import SessionDataset
+from ..dataset import SessionDataset
 import pandas as pd
 import logging
 from functools import partial
