@@ -15,10 +15,29 @@ class ProcessingSettings(BaseModel):
     lickometer_refractory_period_s: float = 0.02  # seconds
 
 
+class FilterOn(BaseModel):
+    start_date: Optional[datetime.date] = Field(
+        default=None,
+        description="Start date to filter session. If None, no filtering on start date.",
+    )
+    end_date: Optional[datetime.date] = Field(
+        default=None,
+        description="End date to filter session. If None, no filtering on end date.",
+    )
+    session_ids: Optional[list[str]] = Field(
+        default=None,
+        description="List of session IDs to filter. If None, no filtering on session IDs.",
+    )
+    subjects: Optional[list[str]] = Field(
+        default=None,
+        description="List of subjects to filter. If None, no filtering on subjects.",
+    )
+
+
 class DataLoadingSettings(pydantic_settings.BaseSettings, yaml_file="sessions.yaml"):
-    root_path: list[Path] = Field(..., description="Root path to the data directory")
-    subject_filters: dict[str, "FilterOn"] = Field(
-        default_factory=dict, description="Dictionary of subject filters"
+    root_path: list[Path] = Field(description="Root path to the data directory")
+    filters: list[FilterOn] = Field(
+        default_factory=list, description="Dictionary of subject filters"
     )
     dataset_version: str = Field(
         default=vrf_version, description="Version of the dataset to use"
@@ -44,21 +63,6 @@ class DataLoadingSettings(pydantic_settings.BaseSettings, yaml_file="sessions.ya
             file_secret_settings,
             pydantic_settings.YamlConfigSettingsSource(settings_cls),
         )
-
-
-class FilterOn(BaseModel):
-    start_date: Optional[datetime.date] = Field(
-        default=None,
-        description="Start date to filter session. If None, no filtering on start date.",
-    )
-    end_date: Optional[datetime.date] = Field(
-        default=None,
-        description="End date to filter session. If None, no filtering on end date.",
-    )
-    session_ids: Optional[list[str]] = Field(
-        default=None,
-        description="List of session IDs to filter. If None, no filtering on session IDs.",
-    )
 
 
 @dataclasses.dataclass

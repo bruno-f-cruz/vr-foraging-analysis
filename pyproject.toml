@@ -11,5 +11,6 @@ dependencies = [
     "numpy>=2.3.3",
     "pandas>=2.3.3",
     "aind-behavior-vr-foraging[data]",
-    "pydantic<2.12",
+    "pydantic",
+    "ruff"
 ]

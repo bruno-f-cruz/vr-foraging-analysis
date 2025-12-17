@@ -1,17 +1,8 @@
-root_path: ['\\allen\aind\scratch\vr-foraging\data', '\\allen\aind\stage\vr-foraging\data']
-subject_filters:
-  "808619":
-    start_date: 2025-10-29
-  "808728":
-    start_date: 2025-10-29
-  "789917":
-    start_date: 2025-10-29
-  #"808619":
-    #start_date: 2025-10-01
-  #"808728":
-    #start_date: 2025-10-01
-  #"789917":
-    #start_date: 2025-10-01
+root_path: ['c:/data/assets']
+filters:
+  - subjects: ['808728']
+    start_date: 2025-10-01
+    end_date: 2025-10-12
 processing_settings:
   downsample_position_to: 60
   lickometer_refractory_period_s: 0.02

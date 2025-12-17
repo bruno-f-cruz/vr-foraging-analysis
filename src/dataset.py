@@ -15,7 +15,6 @@ from aind_behavior_vr_foraging.data_contract import dataset
 import contraqctor
 import dataclasses
 import pandas as pd
-import pytz
 
 logger = logging.getLogger(__name__)
 
@@ -25,36 +24,33 @@ def find_session_info(
 ) -> list[SessionInfo]:
     unique_sessions: list[SessionInfo] = []
     for root_path in settings.root_path:
-        for subject, filter_on in settings.subject_filters.items():
-            subject_path = root_path / subject
-            if not subject_path.exists():
-                logger.debug(f"Subject path does not exist: {subject_path}")
+        if not root_path.exists():
+            logger.warning(f"Root path {root_path} does not exist. Skipping.")
+            continue
+        all_sessions = list(map(create_session_info, root_path.iterdir()))
+        for session in all_sessions:
+            if session.session_id in [s.session_id for s in unique_sessions]:
                 continue
-            logger.debug(f"Subject: {subject}, Filter: {filter_on}")
-            available_sessions = map(create_session_info, subject_path.iterdir())
-            filtered_sessions = (
-                session
-                for session in available_sessions
-                if is_accept_session(session, filter_on)
-                and session.session_id not in [s.session_id for s in unique_sessions]
-            )
-            unique_sessions.extend(filtered_sessions)
+            if any(
+                is_accept_session(session, filter_on) for filter_on in settings.filters
+            ):
+                unique_sessions.append(session)
     return unique_sessions
 
 
 def create_session_info(session_path: Path) -> SessionInfo:
     """Uses session names in the form of:
-    808728_2025-10-09T153828Z
-    or scicomp's weird format: behavior_789917_2025-10-20_20-34-17"""
+    - 808728_2025-10-09T153828Z
+    - scicomp's weird format: behavior_789917_2025-10-20_20-34-17 (read as UTC)
+    """
 
     parts = session_path.stem.split("_")
     if parts[0] == "behavior":
         subject = parts[1]
         date_str = f"{parts[2]}T{parts[3].replace('-', ':')}"
         # Parse as Seattle timezone and convert to date
-        seattle_tz = pytz.timezone("America/Los_Angeles")
         dt = datetime.datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S")
-        dt = seattle_tz.localize(dt)
+        dt = dt.replace(tzinfo=datetime.timezone.utc)
         date = dt.date()
     else:
         # Handle standard format: 808728_2025-10-09T153828Z
@@ -87,6 +83,11 @@ def is_accept_session(session: SessionInfo, filter: FilterOn):
         )
         return False
     logger.debug(f"Session {session.session_id} on {session.date} accepted")
+    if (filter.subjects) and (session.subject not in filter.subjects):
+        logger.debug(
+            f"Session {session.session_id} for subject {session.subject} rejected by subjects {filter.subjects}"
+        )
+        return False
     return True
 
 
