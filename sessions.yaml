@@ -1,8 +1,4 @@
 root_path: ['C:\Data\single-site-dataset']
-filters:
-  - subjects: ['808728']
-    start_date: 2025-10-01
-    end_date: 2025-10-12
 processing_settings:
   downsample_position_to: 60
   lickometer_refractory_period_s: 0.02

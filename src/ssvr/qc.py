@@ -1,9 +1,15 @@
+import logging
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 import numpy as np
-from contraqctor.qc import ContextExportableObj, Suite
+from aind_behavior_vr_foraging.data_qc.data_qc import make_qc_runner
+from contraqctor.qc import ContextExportableObj, HtmlReporter, Suite
 
 from .dataset import SessionDataset
 from .visualization import plot_ethogram, plot_session_trials
+
+logger = logging.getLogger(__name__)
 
 
 class SingleSiteBehaviorSuite(Suite):
@@ -54,3 +60,33 @@ class SingleSiteBehaviorSuite(Suite):
 
         context = ContextExportableObj.as_context(fig)
         return self.pass_test(True, "Summary behavior plotted successfully", context=context)
+
+
+def run_qc(session_datasets: list[SessionDataset], path: Path = Path("./derived") / "qc_reports"):
+    plt.ioff()
+    path.mkdir(parents=True, exist_ok=True)
+
+    for session in session_datasets:
+        print(f"{session.session_info.session_id}", end="")
+        if (path / f"{session.session_info.session_id}.html").exists():
+            print("  - Skipping existing report")
+            continue
+        try:
+            print("  - Running QC...")
+            runner = make_qc_runner(session.dataset)
+            runner.add_suite(SingleSiteBehaviorSuite(session_dataset=session), group="SingleSiteBehaviorSuite")
+            qc_path = path / f"{session.session_info.session_id}.html"
+            reporter = HtmlReporter(output_path=qc_path)
+            results = runner.run_all()
+            reporter.report_results(results)
+        except Exception as e:
+            logging.error(f"Failed to run QC for session {session.session_info.session_id}: {e}")
+
+    files = sorted(p for p in path.glob("*.html") if p.name != "index.html")
+
+    with open(path / "index.html", "w", encoding="utf-8") as f:
+        f.write("<!doctype html><html><body><ul>\n")
+        for p in files:
+            f.write(f'<li><a href="{p.name}">{p.stem}</a></li>\n')
+        f.write("</ul></body></html>\n")
+    plt.ion()

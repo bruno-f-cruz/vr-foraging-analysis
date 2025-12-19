@@ -2110,6 +2110,7 @@ dependencies = [
     { name = "numpy" },
     { name = "pandas" },
     { name = "pydantic" },
+    { name = "rich" },
     { name = "ruff" },
 ]
 
@@ -2122,6 +2123,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.3.3" },
     { name = "pandas", specifier = ">=2.3.3" },
     { name = "pydantic" },
+    { name = "rich", specifier = ">=14.2.0" },
     { name = "ruff" },
 ]
 
