@@ -84,3 +84,15 @@ def enrich_with_relative_to_block(session: SessionDataset) -> pd.DataFrame:
     trials["trials_from_last_block_by_trial_type"] = trials_from_last_block_by_trial_type
     trials["trials_to_next_block_by_trial_type"] = trials_to_next_block_by_trial_type
     return trials
+
+
+def enrich_with_previous_trial(session: SessionDataset, n_previous: int = 5) -> pd.DataFrame:
+    trials = session.trials
+    columns_to_add = ["is_rewarded", "is_choice", "patch_index"]
+
+    n = len(trials)
+    for col in columns_to_add:
+        for i in range(1, n_previous + 1):
+            new_col = f"{col}_past_{i}"
+            trials[new_col] = [trials[col][idx - i] if idx - i >= 0 else None for idx in range(n)]
+    return trials
