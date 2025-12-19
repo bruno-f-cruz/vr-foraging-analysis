@@ -1,13 +1,14 @@
+import dataclasses
+import logging
 import typing as t
-import pandas as pd
-import numpy as np
+
 import aind_behavior_vr_foraging.rig as vrf_rig
 import aind_behavior_vr_foraging.task_logic as vrf_task
-import logging
 import contraqctor
+import numpy as np
+import pandas as pd
 
-from .models import Trial, Site
-import dataclasses
+from .models import Site, Trial
 
 logger = logging.getLogger(__name__)
 
@@ -28,9 +29,7 @@ def compute_position_and_velocity(
         dataset.at("Behavior").at("HarpTreadmill").load().at("SensorData").load().data,
     )
     encoder = treadmill_data.query("MessageType == 'EVENT'")["Encoder"].copy()
-    assert rig_settings.harp_treadmill.calibration is not None, (
-        "Treadmill calibration is missing"
-    )
+    assert rig_settings.harp_treadmill.calibration is not None, "Treadmill calibration is missing"
     calibration = rig_settings.harp_treadmill.calibration
     converting_factor = (
         calibration.output.wheel_diameter
@@ -60,41 +59,22 @@ def compute_position_and_velocity(
     return df
 
 
-def process_lickometer(
-    dataset: contraqctor.contract.Dataset, *, refractory_period_s: float = 0.02
-) -> np.ndarray:
-    lickometer = (
-        dataset.at("Behavior")
-        .at("HarpLickometer")
-        .load()
-        .at("LickState")
-        .load()
-        .data.copy()
-    )
+def process_lickometer(dataset: contraqctor.contract.Dataset, *, refractory_period_s: float = 0.02) -> np.ndarray:
+    lickometer = dataset.at("Behavior").at("HarpLickometer").load().at("LickState").load().data.copy()
     lickometer = lickometer[lickometer["MessageType"] == "EVENT"]["Channel0"]
-    lick_onsets = lickometer[
-        (lickometer) & (~lickometer.shift(1, fill_value=False))
-    ].index
+    lick_onsets = lickometer[(lickometer) & (~lickometer.shift(1, fill_value=False))].index
     return lick_onsets.values
 
 
 def parse_trials(dataset: contraqctor.contract.Dataset) -> pd.DataFrame:
     reward_label = vrf_task.VirtualSiteLabels.REWARDSITE
-    rewarded_sites = (
-        dataset.at("Behavior").at("SoftwareEvents").at("ActiveSite").load().data.copy()
-    )
-    rewarded_sites = rewarded_sites[
-        rewarded_sites["data"].apply(lambda d: d["label"] == reward_label)
-    ]
+    rewarded_sites = dataset.at("Behavior").at("SoftwareEvents").at("ActiveSite").load().data.copy()
+    rewarded_sites = rewarded_sites[rewarded_sites["data"].apply(lambda d: d["label"] == reward_label)]
 
     # Merge nearest patch (backward in time)
     merged = pd.merge_asof(
         rewarded_sites,
-        dataset.at("Behavior")
-        .at("SoftwareEvents")
-        .at("ActivePatch")
-        .load()
-        .data[["data"]],
+        dataset.at("Behavior").at("SoftwareEvents").at("ActivePatch").load().data[["data"]],
         left_index=True,
         right_index=True,
         direction="backward",
@@ -104,55 +84,24 @@ def parse_trials(dataset: contraqctor.contract.Dataset) -> pd.DataFrame:
     merged.rename(columns={"data_patch": "patches"}, inplace=True)
     merged["patch_index"] = merged.patches.apply(lambda d: d["state_index"])
 
-    speaker_choice = (
-        dataset.at("Behavior")
-        .at("HarpBehavior")
-        .load()
-        .at("PwmStart")
-        .load()
-        .data.copy()
-    )
-    speaker_choice = speaker_choice[
-        (speaker_choice["MessageType"] == "WRITE") & (speaker_choice["PwmDO2"])
+    speaker_choice = dataset.at("Behavior").at("HarpBehavior").load().at("PwmStart").load().data.copy()
+    speaker_choice = speaker_choice[(speaker_choice["MessageType"] == "WRITE") & (speaker_choice["PwmDO2"])]
+
+    water_delivery = dataset.at("Behavior").at("HarpBehavior").load().at("OutputSet").load().data.copy()
+    water_delivery = water_delivery[(water_delivery["MessageType"] == "WRITE") & (water_delivery["SupplyPort0"])][
+        "SupplyPort0"
     ]
 
-    water_delivery = (
-        dataset.at("Behavior")
-        .at("HarpBehavior")
-        .load()
-        .at("OutputSet")
-        .load()
-        .data.copy()
-    )
-    water_delivery = water_delivery[
-        (water_delivery["MessageType"] == "WRITE") & (water_delivery["SupplyPort0"])
-    ]["SupplyPort0"]
-
-    odor_onset = (
-        dataset.at("Behavior")
-        .at("HarpOlfactometer")
-        .load()
-        .at("EndValveState")
-        .load()
-        .data
-    )
+    odor_onset = dataset.at("Behavior").at("HarpOlfactometer").load().at("EndValveState").load().data
     odor_onset = odor_onset[odor_onset["MessageType"] == "WRITE"]["EndValve0"]
     odor_onset = odor_onset[(odor_onset) & (~odor_onset.shift(1, fill_value=False))]
 
-    patches_state = (
-        dataset.at("Behavior").at("SoftwareEvents").at("PatchState").load().data.copy()
-    )
+    patches_state = dataset.at("Behavior").at("SoftwareEvents").at("PatchState").load().data.copy()
     expanded = pd.json_normalize(patches_state["data"])
     expanded.index = patches_state.index
     patches_state = patches_state.join(expanded)
 
-    patches_state_at_reward = (
-        dataset.at("Behavior")
-        .at("SoftwareEvents")
-        .at("PatchStateAtReward")
-        .load()
-        .data.copy()
-    )
+    patches_state_at_reward = dataset.at("Behavior").at("SoftwareEvents").at("PatchStateAtReward").load().data.copy()
     expanded = pd.json_normalize(patches_state_at_reward["data"])
     expanded.index = patches_state_at_reward.index
     patches_state_at_reward = patches_state_at_reward.join(expanded)
@@ -165,31 +114,21 @@ def parse_trials(dataset: contraqctor.contract.Dataset) -> pd.DataFrame:
         next_timestamp = merged.index[i + 1]
         logger.debug(f"Processing trial {i} at {this_timestamp} - {next_timestamp}")
         ## Find closest odor_onset after this_timestamp but before next_timestamp
-        odor_onsets_in_interval = odor_onset[
-            (odor_onset.index >= this_timestamp) & (odor_onset.index < next_timestamp)
-        ]
+        odor_onsets_in_interval = odor_onset[(odor_onset.index >= this_timestamp) & (odor_onset.index < next_timestamp)]
         if len(odor_onsets_in_interval) == 0:
-            logger.warning(
-                f"No odor onset in site {i} interval...Using software event instead"
-            )
+            logger.warning(f"No odor onset in site {i} interval...Using software event instead")
             odor_onsets_in_interval = merged.loc[[this_timestamp]]
 
         ## Find closest speaker_choice after this_timestamp but before next_timestamp
         speaker_choices_in_interval = speaker_choice[
-            (speaker_choice.index >= this_timestamp)
-            & (speaker_choice.index < next_timestamp)
+            (speaker_choice.index >= this_timestamp) & (speaker_choice.index < next_timestamp)
         ]
-        assert len(speaker_choices_in_interval) <= 1, (
-            "Multiple speaker choices in interval"
-        )
+        assert len(speaker_choices_in_interval) <= 1, "Multiple speaker choices in interval"
         water_deliveries_in_interval = water_delivery[
-            (water_delivery.index >= this_timestamp)
-            & (water_delivery.index < next_timestamp)
+            (water_delivery.index >= this_timestamp) & (water_delivery.index < next_timestamp)
         ]
         if len(water_deliveries_in_interval) > 1:
-            logger.warning(
-                f"Multiple water deliveries in interval {this_timestamp} - {next_timestamp}"
-            )
+            logger.warning(f"Multiple water deliveries in interval {this_timestamp} - {next_timestamp}")
             water_deliveries_in_interval = water_deliveries_in_interval.iloc[:1]
 
         # Get the FIRST patch state AFTER the this_timestamp
@@ -202,16 +141,9 @@ def parse_trials(dataset: contraqctor.contract.Dataset) -> pd.DataFrame:
             # TODO this is because of block switches...
             trial = Trial(
                 odor_onset_time=odor_onsets_in_interval.index[0],
-                choice_time=speaker_choices_in_interval.index[0]
-                if len(speaker_choices_in_interval) == 1
-                else None,
-                reward_time=water_deliveries_in_interval.index[0]
-                if len(water_deliveries_in_interval) == 1
-                else None,
-                reaction_duration=(
-                    speaker_choices_in_interval.index[0]
-                    - odor_onsets_in_interval.index[0]
-                )
+                choice_time=speaker_choices_in_interval.index[0] if len(speaker_choices_in_interval) == 1 else None,
+                reward_time=water_deliveries_in_interval.index[0] if len(water_deliveries_in_interval) == 1 else None,
+                reaction_duration=(speaker_choices_in_interval.index[0] - odor_onsets_in_interval.index[0])
                 if len(speaker_choices_in_interval) == 1
                 else None,
                 patch_index=merged.iloc[i]["patch_index"],
@@ -276,12 +208,8 @@ def get_closest_from_timestamp(
 
 
 def process_sites(dataset: contraqctor.contract.Dataset) -> pd.DataFrame:
-    sites = (
-        dataset.at("Behavior").at("SoftwareEvents").at("ActiveSite").load().data.copy()
-    )
-    patches = (
-        dataset.at("Behavior").at("SoftwareEvents").at("ActivePatch").load().data.copy()
-    )
+    sites = dataset.at("Behavior").at("SoftwareEvents").at("ActiveSite").load().data.copy()
+    patches = dataset.at("Behavior").at("SoftwareEvents").at("ActivePatch").load().data.copy()
 
     # Ensure patches and sites are sorted by index
     sites = sites.sort_index()

@@ -1,15 +1,15 @@
-from matplotlib import pyplot as plt
-import numpy as np
-from aind_behavior_vr_foraging import task_logic as vrf_task
-from typing import Optional, Literal, Any, Callable
-from ..dataset import SessionDataset
-import pandas as pd
 import logging
-from functools import partial
 from contextlib import contextmanager
-
-
+from functools import partial
 from itertools import cycle
+from typing import Any, Callable, Literal, Optional
+
+import numpy as np
+import pandas as pd
+from aind_behavior_vr_foraging import task_logic as vrf_task
+from matplotlib import pyplot as plt
+
+from ..dataset import SessionDataset
 
 logger = logging.getLogger(__name__)
 
@@ -68,9 +68,7 @@ def plot_ethogram(
     if ax is None:
         fig, ax = plt.subplots(figsize=kwargs.pop("figsize", (6, 4)))
 
-    mask = (dataset.sites["t_end"] >= window_start) & (
-        dataset.sites["t_start"] <= window_end
-    )
+    mask = (dataset.sites["t_end"] >= window_start) & (dataset.sites["t_start"] <= window_end)
     for i, row in dataset.sites[mask].iterrows():
         color = get_color_from_site(row["site_label"], row["patch_idx"])
         ax.axvspan(
@@ -123,9 +121,7 @@ def plot_ethogram(
     # legend 1
     handles, labels = ax.get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
-    ax.legend(
-        by_label.values(), by_label.keys(), bbox_to_anchor=(-0.05, 1), loc="upper right"
-    )
+    ax.legend(by_label.values(), by_label.keys(), bbox_to_anchor=(-0.05, 1), loc="upper right")
 
     # legend 2
     ax2.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
@@ -160,9 +156,7 @@ def plot_aligned_to(
     snippets = []
     for ts in timestamps:
         _win = np.array(event_window) + ts
-        samples_in_window = timeseries.index[
-            (timeseries.index >= _win[0]) & (timeseries.index <= _win[1])
-        ]
+        samples_in_window = timeseries.index[(timeseries.index >= _win[0]) & (timeseries.index <= _win[1])]
         snippet = timeseries.loc[samples_in_window]
         snippets.append(snippet)
         plot_method(
@@ -206,9 +200,7 @@ def plot_aligned_to_grouped_by(
     ax: Optional[plt.Axes] = None,
     bin_width: float = 0.025,
     agg_fnc: Callable[[np.ndarray], np.ndarray] = partial(np.nanmean, axis=1),
-    agg_spread_fnc: Callable[[np.ndarray], np.ndarray] = partial(
-        np.nanpercentile, q=[2.5, 97.5], axis=1
-    ),
+    agg_spread_fnc: Callable[[np.ndarray], np.ndarray] = partial(np.nanpercentile, q=[2.5, 97.5], axis=1),
     **kwargs,
 ) -> tuple[plt.Axes, dict[Any, pd.DataFrame]]:
     _ax_passed = ax is not None
@@ -229,9 +221,7 @@ def plot_aligned_to_grouped_by(
             timestamps = df.index.to_numpy()
 
         if _tup not in plot_kwargs:
-            logging.warning(
-                f"No plot_kwargs specified for group {_tup}, using defaults."
-            )
+            logging.warning(f"No plot_kwargs specified for group {_tup}, using defaults.")
             _these_plot_kwargs = _get_default_plot_kwargs(_anonymous_cmap)
         else:
             _these_plot_kwargs = plot_kwargs[_tup]
@@ -265,9 +255,7 @@ def plot_aligned_to_grouped_by(
         ax.plot(
             new_index,
             binned_mean,
-            label=", ".join(f"{col}={val}" for col, val in zip(by, _tup))
-            if by
-            else str(_tup),
+            label=", ".join(f"{col}={val}" for col, val in zip(by, _tup)) if by else str(_tup),
             **{**_these_plot_kwargs, **agg_plot_kwarg_modifier},
         )
         ax.fill_between(
@@ -280,13 +268,7 @@ def plot_aligned_to_grouped_by(
     if not _ax_passed:
         ax.axvline(0, color="k", linestyle="--", linewidth=1)
         ax.set_xlabel("Time from event (s)")
-        ax.set_ylabel(
-            str(
-                timeseries.columns[0]
-                if isinstance(timeseries, pd.DataFrame)
-                else timeseries.name
-            )
-        )
+        ax.set_ylabel(str(timeseries.columns[0] if isinstance(timeseries, pd.DataFrame) else timeseries.name))
         ax.set_xlim(event_window)
         ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left", borderaxespad=0.0)
 
@@ -340,9 +322,7 @@ def plot_session_trials(
         rewarded_filter = (subset["is_choice"] == 1) & (subset["is_rewarded"] == 1)
         ax.scatter(
             subset[rewarded_filter].index,
-            subset[rewarded_filter]["patch_index"]
-            + subset[rewarded_filter]["is_choice"] * ys_gain * 2
-            + yy_offset,
+            subset[rewarded_filter]["patch_index"] + subset[rewarded_filter]["is_choice"] * ys_gain * 2 + yy_offset,
             color=patch_index_colormap[patch_index],
             label=patch_index,
             alpha=1,

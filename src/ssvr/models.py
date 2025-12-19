@@ -1,14 +1,16 @@
-import pydantic_settings
-from pydantic import Field, BaseModel
-from pathlib import Path
+import dataclasses
 import datetime
+from pathlib import Path
 from typing import Optional
+
+import numpy as np
+import pandas as pd
+import pydantic_settings
+import semver
 from aind_behavior_vr_foraging import __semver__ as vrf_version
 from aind_behavior_vr_foraging import task_logic as vrf_task
-import dataclasses
-import pandas as pd
-import numpy as np
-import semver
+from pydantic import BaseModel, Field
+
 
 class ProcessingSettings(BaseModel):
     downsample_position_to: Optional[float] = 60  # Hz, if None, do not downsample
@@ -36,15 +38,10 @@ class FilterOn(BaseModel):
 
 class DataLoadingSettings(pydantic_settings.BaseSettings, yaml_file="sessions.yaml"):
     root_path: list[Path] = Field(description="Root path to the data directory")
-    filters: list[FilterOn] = Field(
-        default_factory=list, description="Dictionary of subject filters"
-    )
-    dataset_version: str = Field(
-        default=vrf_version, description="Version of the dataset to use"
-    )
-    processing_settings: "ProcessingSettings" = Field(
-        default=ProcessingSettings(), validate_default=True
-    )
+    root_derived_path: Path = Field(Path("./derived_data"), description="Root path to the derived data directory")
+    filters: list[FilterOn] = Field(default_factory=list, description="Dictionary of subject filters")
+    dataset_version: str = Field(default=vrf_version, description="Version of the dataset to use")
+    processing_settings: "ProcessingSettings" = Field(default=ProcessingSettings(), validate_default=True)
 
     @classmethod
     def settings_customise_sources(
@@ -98,7 +95,7 @@ class SessionMetrics:
     reward_site_count: int  # number of reward sites observed
     stop_count: int  # number of stops/harvest attempts
     reward_count: int  # number of collected reward events
-    session_duration: datetime.timedelta # duration of the session
+    session_duration: datetime.timedelta  # duration of the session
     p_stop_per_odor: dict[int, float]  # probability of stopping per odor
 
     total_reward_ml: float = 0.0  # total reward collected in mL

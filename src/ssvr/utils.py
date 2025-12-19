@@ -1,6 +1,7 @@
-import semver
-import requests
 import logging
+
+import requests
+import semver
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +23,7 @@ def get_version_from_sha(repo: str, commit_hash: str) -> semver.Version:
                     return semver.Version.parse(version)
     except Exception:
         logger.warning(
-            "Could not resolve version from pyproject.toml for commit hash %s. "
-            "Falling back to __init__.py",
+            "Could not resolve version from pyproject.toml for commit hash %s. Falling back to __init__.py",
             commit_hash,
         )
 

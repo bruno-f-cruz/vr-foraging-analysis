@@ -1,22 +1,22 @@
-from .models import DataLoadingSettings, ProcessedStreams, SessionInfo, FilterOn
+import dataclasses
+import datetime
+import json
 import logging
 from pathlib import Path
-import datetime
-from .models import ProcessingSettings, SessionMetrics
+
+import contraqctor
+import pandas as pd
+import semver
+from aind_behavior_vr_foraging import __semver__ as vrf_version
+from aind_behavior_vr_foraging.data_contract import dataset
+
+from .models import DataLoadingSettings, FilterOn, ProcessedStreams, ProcessingSettings, SessionInfo, SessionMetrics
 from .processing import (
     compute_position_and_velocity,
     parse_trials,
     process_lickometer,
     process_sites,
 )
-
-from aind_behavior_vr_foraging import __semver__ as vrf_version
-from aind_behavior_vr_foraging.data_contract import dataset
-import contraqctor
-import dataclasses
-import pandas as pd
-import json
-import semver
 
 logger = logging.getLogger(__name__)
 
@@ -33,10 +33,10 @@ def find_session_info(
         for session in all_sessions:
             if session.session_id in [s.session_id for s in unique_sessions]:
                 continue
-            
-            if (len(settings.filters) == 0) or (any(
-                is_accept_session(session, filter_on) for filter_on in settings.filters
-            )):
+
+            if (len(settings.filters) == 0) or (
+                any(is_accept_session(session, filter_on) for filter_on in settings.filters)
+            ):
                 unique_sessions.append(session)
     return unique_sessions
 
@@ -76,19 +76,13 @@ def create_session_info(session_path: Path) -> SessionInfo:
 
 def is_accept_session(session: SessionInfo, filter: FilterOn):
     if (filter.start_date) and (session.date < filter.start_date):
-        logger.debug(
-            f"Session {session.session_id} on {session.date} rejected by start_date {filter.start_date}"
-        )
+        logger.debug(f"Session {session.session_id} on {session.date} rejected by start_date {filter.start_date}")
         return False
     if (filter.end_date) and (session.date > filter.end_date):
-        logger.debug(
-            f"Session {session.session_id} on {session.date} rejected by end_date {filter.end_date}"
-        )
+        logger.debug(f"Session {session.session_id} on {session.date} rejected by end_date {filter.end_date}")
         return False
     if (filter.session_ids) and (session.session_id not in filter.session_ids):
-        logger.debug(
-            f"Session {session.session_id} on {session.date} rejected by session_ids {filter.session_ids}"
-        )
+        logger.debug(f"Session {session.session_id} on {session.date} rejected by session_ids {filter.session_ids}")
         return False
     logger.debug(f"Session {session.session_id} on {session.date} accepted")
     if (filter.subjects) and (session.subject not in filter.subjects):
@@ -126,9 +120,7 @@ class SessionDataset:
         self.trials = parse_trials(self.dataset)
 
         self.session_metrics = SessionMetrics(
-            total_distance=self.processed_streams.position_velocity["velocity"]
-            .abs()
-            .sum(),
+            total_distance=self.processed_streams.position_velocity["velocity"].abs().sum(),
             reward_site_count=len(self.trials),
             stop_count=self.trials["choice_time"].notna().sum(),
             reward_count=self.trials["reward_time"].notna().sum(),
@@ -137,12 +129,9 @@ class SessionDataset:
                 for patch_id, df in self.trials.groupby("patch_index")
             },
             session_duration=self._get_session_duration(self.dataset),
-            total_reward_ml=self.dataset["Behavior"]["SoftwareEvents"]["GiveReward"]
-            .read()["data"]
-            .sum()
-            * 1e-3,
+            total_reward_ml=self.dataset["Behavior"]["SoftwareEvents"]["GiveReward"].read()["data"].sum() * 1e-3,
         )
-    
+
     @staticmethod
     def _get_session_duration(dataset: contraqctor.contract.Dataset) -> datetime.timedelta:
         clk_timestamps = dataset["Behavior"]["HarpClockGenerator"]["Counter"].data
@@ -154,10 +143,6 @@ def get_processed_data_streams(
     dataset: contraqctor.contract.Dataset, settings: ProcessingSettings
 ) -> "ProcessedStreams":
     return ProcessedStreams(
-        position_velocity=compute_position_and_velocity(
-            dataset, downsample_to_hz=settings.downsample_position_to
-        ),
-        lick_onsets=process_lickometer(
-            dataset, refractory_period_s=settings.lickometer_refractory_period_s
-        ),
+        position_velocity=compute_position_and_velocity(dataset, downsample_to_hz=settings.downsample_position_to),
+        lick_onsets=process_lickometer(dataset, refractory_period_s=settings.lickometer_refractory_period_s),
     )
