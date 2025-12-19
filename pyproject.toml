@@ -19,7 +19,7 @@ dependencies = [
     "aind-behavior-vr-foraging[data]",
     "pydantic",
     "ruff",
-    "rich>=14.2.0",
+    "tqdm>=4.67.1",
 ]
 
 

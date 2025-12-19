@@ -1,8 +1,6 @@
 import logging
 
 import requests
-import rich.console
-import rich.progress
 import semver
 
 logger = logging.getLogger(__name__)
@@ -49,17 +47,3 @@ def get_version_from_sha(repo: str, commit_hash: str) -> semver.Version:
         commit_hash,
         repo,
     )
-
-
-def get_console() -> rich.console.Console:
-    return rich.console.Console()
-
-
-def get_progress_format() -> list[rich.progress.ProgressColumn]:
-    return [
-        rich.progress.TextColumn("[bold blue]{task.description}"),
-        rich.progress.BarColumn(),
-        rich.progress.TextColumn("{task.completed}/{task.total}"),
-        rich.progress.TextColumn("{task.percentage:>3.0f}%"),
-        rich.progress.TimeElapsedColumn(),
-    ]
