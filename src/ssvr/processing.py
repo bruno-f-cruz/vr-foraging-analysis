@@ -124,6 +124,36 @@ def parse_trials(dataset: contraqctor.contract.Dataset) -> pd.DataFrame:
             (speaker_choice.index >= this_timestamp) & (speaker_choice.index < next_timestamp)
         ]
         assert len(speaker_choices_in_interval) <= 1, "Multiple speaker choices in interval"
+
+        stops = dataset.at("Behavior").at("OperationControl").at("IsStopped").data
+        ## Find the closest is stop
+        if len(speaker_choices_in_interval) > 0:
+            mask = (stops.index <= speaker_choices_in_interval.index[0]) & (stops.iloc[:, 0])
+            stops_before_speaker = stops.loc[mask]
+            if len(stops_before_speaker) > 0:
+                stop_time = stops_before_speaker.index[-1]  # Get the closest one before
+            else:
+                raise ValueError("No stop found before speaker choice")
+        else:
+            stop_time = None
+
+        ## Find the longest stop inside the interval
+        stop_data_inside_interval = stops[(stops.index >= this_timestamp) & (stops.index < next_timestamp)]
+        if not stop_data_inside_interval.empty:
+            # If the first value is True, we compute the duration from the odor onset
+            if stop_data_inside_interval.iloc[0, 0]:
+                prepend = pd.DataFrame(
+                    [[False]], index=[odor_onsets_in_interval.index[0]], columns=stop_data_inside_interval.columns
+                )
+                stop_data_inside_interval = pd.concat([prepend, stop_data_inside_interval])
+
+            index_diff = np.diff(stop_data_inside_interval.index.values)
+            mask = stop_data_inside_interval.values.flatten()
+            longest_stop_duration = index_diff[mask[:-1]].max() if len(index_diff[mask[:-1]]) > 0 else None
+        else:
+            longest_stop_duration = None
+
+        ## Find closest water_delivery after this_timestamp but before next_timestamp
         water_deliveries_in_interval = water_delivery[
             (water_delivery.index >= this_timestamp) & (water_delivery.index < next_timestamp)
         ]
@@ -150,6 +180,8 @@ def parse_trials(dataset: contraqctor.contract.Dataset) -> pd.DataFrame:
                 is_rewarded=len(water_deliveries_in_interval) == 1,
                 p_reward=site_state_at_reward["Probability"],
                 is_choice=len(speaker_choices_in_interval) == 1,
+                stop_time=stop_time,
+                longest_stop_duration=longest_stop_duration,
             )
             trials.append(trial)
         else:
@@ -163,6 +195,8 @@ def parse_trials(dataset: contraqctor.contract.Dataset) -> pd.DataFrame:
                     is_rewarded=None,
                     p_reward=np.nan,
                     is_choice=False,
+                    stop_time=None,
+                    longest_stop_duration=None,
                 )
             )
 

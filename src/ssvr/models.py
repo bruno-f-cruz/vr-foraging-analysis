@@ -81,6 +81,8 @@ class Trial:
     is_rewarded: Optional[bool]
     is_choice: bool
     p_reward: float
+    stop_time: Optional[float]
+    longest_stop_duration: Optional[float]
 
 
 @dataclasses.dataclass
