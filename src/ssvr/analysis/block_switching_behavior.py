@@ -1,0 +1,204 @@
+import typing as t
+from typing import Optional
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from tqdm.auto import tqdm
+
+
+def get_switches_df(
+    all_trials_df: pd.DataFrame, block_switch_filter: t.Literal["same", "different", "both"] = "same"
+) -> pd.DataFrame:
+    """Get a DataFrame of block switches with the block probabilities before and after the switch."""
+
+    block_switches = (
+        all_trials_df["block_index"].diff().fillna(0) > 0
+    )  # this also gets rid of cross session switches since those diffs will be <=0
+    switch_indices = all_trials_df.index[block_switches]
+    all_trials_df.sort_index(inplace=True)  # just to ensure the shift works correctly
+    block_probabilities_before = all_trials_df["block_patch_probabilities"].shift()[block_switches]
+    block_probabilities_after = all_trials_df["block_patch_probabilities"][block_switches]
+    prob_switch_df = pd.DataFrame(
+        {
+            "before": block_probabilities_before.values,
+            "after": block_probabilities_after.values,
+            "before_high_index": [np.argmax(probs) for probs in block_probabilities_before.values],
+            "after_high_index": [np.argmax(probs) for probs in block_probabilities_after.values],
+            "after_low_index": [np.argmin(probs) for probs in block_probabilities_after.values],
+            "before_low_index": [np.argmin(probs) for probs in block_probabilities_before.values],
+        },
+        index=switch_indices,
+    )
+
+    if block_switch_filter == "same":
+        prob_switch_df = prob_switch_df[prob_switch_df["before"].apply(tuple) == prob_switch_df["after"].apply(tuple)]
+    elif block_switch_filter == "different":
+        prob_switch_df = prob_switch_df[prob_switch_df["before"].apply(tuple) != prob_switch_df["after"].apply(tuple)]
+    elif block_switch_filter == "both":
+        pass
+    else:
+        raise ValueError(f"Invalid block_switch_filter: {block_switch_filter}")
+
+    return prob_switch_df
+
+
+def calculate_choice_matrix(
+    all_trials_df: pd.DataFrame, prob_switch_df: pd.DataFrame, *, trial_window: t.Tuple[int, int] = (-10, 30)
+) -> tuple[np.ndarray, pd.DataFrame]:
+    """Calculate choice matrices around block switches for plotting. Returns a 3D numpy array of shape (num_switches, num_trials_in_window, 2) and a DataFrame of switch trials with original indices."""
+    is_patch_low_after_zip = (0, 1)  # high, low
+
+    switch_choice_data = np.full(
+        shape=(len(prob_switch_df), trial_window[1] - trial_window[0], len(is_patch_low_after_zip)),
+        fill_value=np.nan,
+        dtype=float,
+    )
+    switch_indices = []
+    for i_switch, (trial_switch, row) in tqdm(enumerate(prob_switch_df.iterrows()), desc="Processing block switches"):
+        switch_trial = all_trials_df.loc[trial_switch]
+        switch_indices.append(trial_switch)
+        session_id = switch_trial["session_id"]
+        session_trials = all_trials_df[all_trials_df["session_id"] == session_id]
+        trial_window_mask_after = (session_trials["trials_from_last_block_by_trial_type"] < trial_window[1]) & (
+            session_trials["block_index"] == switch_trial["block_index"]
+        )
+        trial_window_mask_before = (session_trials["trials_to_next_block_by_trial_type"] < -trial_window[0]) & (
+            session_trials["block_index"] == switch_trial["block_index"] - 1
+        )
+        trial_window_mask = trial_window_mask_after | trial_window_mask_before
+        for is_patch_low_after in is_patch_low_after_zip:
+            if is_patch_low_after == 0:
+                patch_idx = prob_switch_df.loc[trial_switch]["after_high_index"]
+            else:
+                patch_idx = prob_switch_df.loc[trial_switch]["after_low_index"]
+            patch_id_mask = session_trials["patch_index"] == patch_idx
+            trials_to_take = session_trials[trial_window_mask & patch_id_mask]
+            if len(trials_to_take) == 0:
+                continue
+            min_idx = trials_to_take.iloc[0]["trials_to_next_block_by_trial_type"]
+            slice_from_array_start = -(trial_window[0] + min_idx) - 1
+            slice_from_array_end = slice_from_array_start + len(trials_to_take)
+            switch_choice_data[i_switch, slice_from_array_start:slice_from_array_end, is_patch_low_after] = (
+                trials_to_take["is_choice"].values
+            )
+
+    switch_trials_df = all_trials_df.loc[switch_indices]
+    switch_trials_df["index_ord"] = np.arange(len(switch_trials_df))
+
+    return switch_choice_data, switch_trials_df
+
+
+def plot_block_switch_choice_patterns(
+    switch_choice_data: np.ndarray,
+    trial_window: t.Tuple[int, int],
+    *,
+    figsize: t.Tuple[float, float] = (12, 15),
+    ax: Optional[plt.Axes] = None,
+    **kwargs,
+) -> t.Tuple[plt.Figure, t.List[plt.Axes]]:
+    """
+    Plot choice patterns around block switches.
+
+    Parameters
+    ----------
+    switch_choice_data : np.ndarray
+        3D array of shape (n_switches, n_trials_in_window, 2) containing choice data
+        for each switch, where last dimension is [high_reward_patch, low_reward_patch]
+    trial_window : tuple[int, int]
+        Window around block switch (trials before, trials after)
+    figsize : tuple[float, float]
+        Figure size, by default (12, 15)
+    ax : plt.Axes, optional
+        Existing axes to plot on. If None, creates new figure, by default None
+    **kwargs
+        Additional keyword arguments for customization
+
+    Returns
+    -------
+    tuple[plt.Figure, list[plt.Axes]]
+        Figure and list of axes objects [heatmap1, heatmap2, average_plot]
+    """
+    x_positions = np.arange(trial_window[0], trial_window[1])
+
+    patch_names = ["High Reward Patch", "Low Reward Patch"]
+    patch_colors = ["red", "blue"]
+
+    _ax_passed = ax is not None
+    if ax is None:
+        # Create layout: 2x2 grid with bottom plot spanning full width
+        fig = plt.figure(figsize=figsize)
+        gs = fig.add_gridspec(2, 2, hspace=0.3, wspace=0.3)
+        axes = [
+            fig.add_subplot(gs[0, 0]),  # Top left - High reward patch heatmap
+            fig.add_subplot(gs[0, 1]),  # Top right - Low reward patch heatmap
+            fig.add_subplot(gs[1, :]),  # Bottom - Average choice probability (spans both columns)
+        ]
+    else:
+        fig = ax.figure
+        axes = [ax]
+
+    if not _ax_passed:
+        for patch_id in range(2):
+            im = axes[patch_id].imshow(
+                switch_choice_data[:, :, patch_id], aspect="auto", cmap="RdYlBu_r", interpolation="none", vmin=0, vmax=1
+            )
+            axes[patch_id].set_title(f"{patch_names[patch_id]} - Individual Switches")
+            axes[patch_id].set_ylabel("Block Switch Number")
+
+            tick_positions = np.arange(0, len(x_positions), 10)
+            tick_labels = x_positions[tick_positions]
+            axes[patch_id].set_xticks(tick_positions)
+            axes[patch_id].set_xticklabels(tick_labels)
+            axes[patch_id].set_xlabel("Trials Relative to Block Switch")
+
+            switch_position = -trial_window[0]
+            axes[patch_id].axvline(x=switch_position, color="white", linestyle="--", alpha=0.8)
+
+            plt.colorbar(im, ax=axes[patch_id], label="Choice Probability")
+
+        for patch_id in range(2):
+            data = switch_choice_data[:, :, patch_id]
+            mean_choice = np.nanmean(data, axis=0)
+
+            # Bootstrap confidence intervals
+            n_bootstrap = 1000
+            confidence_level = 0.95
+            alpha = 1 - confidence_level
+
+            ci_lower = np.full_like(mean_choice, np.nan)
+            ci_upper = np.full_like(mean_choice, np.nan)
+
+            for i in range(len(mean_choice)):
+                # Get valid (non-NaN) samples for this time point
+                valid_samples = data[:, i][~np.isnan(data[:, i])]
+
+                if len(valid_samples) > 1:  # Need at least 2 samples for bootstrap
+                    bootstrap_means = []
+                    for _ in range(n_bootstrap):
+                        resampled = np.random.choice(valid_samples, size=len(valid_samples), replace=True)
+                        bootstrap_means.append(np.mean(resampled))
+
+                    ci_lower[i] = np.percentile(bootstrap_means, 100 * alpha / 2)
+                    ci_upper[i] = np.percentile(bootstrap_means, 100 * (1 - alpha / 2))
+
+            axes[2].plot(
+                x_positions,
+                mean_choice,
+                "o-",
+                color=patch_colors[patch_id],
+                alpha=0.8,
+                label=patch_names[patch_id],
+                linewidth=2,
+            )
+            axes[2].fill_between(x_positions, ci_lower, ci_upper, alpha=0.2, color=patch_colors[patch_id])
+
+        axes[2].set_title("Average Choice Probability - Both Patches")
+        axes[2].set_xlabel("Trials Relative to Block Switch")
+        axes[2].set_ylabel("Choice Probability")
+        axes[2].set_ylim(0, 1)
+        axes[2].grid(True, alpha=0.3)
+        axes[2].axvline(x=0, color="black", linestyle="--", alpha=0.8, label="Block Switch")
+        axes[2].legend()
+
+    return fig, axes
