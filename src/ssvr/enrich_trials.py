@@ -36,6 +36,8 @@ def enrich_with_block_info(session: SessionDataset) -> pd.DataFrame:
         lambda idx: block.loc[idx, "block_patch_probabilities"] if idx is not None else None
     )
     trials["block_index"] = timestamps.apply(lambda idx: block.loc[idx, "block_index"] if idx is not None else None)
+    trials["high_patch_index"] = trials["block_patch_probabilities"].apply(np.argmax)
+    return trials
 
 
 def enrich_with_relative_to_block(session: SessionDataset) -> pd.DataFrame:
