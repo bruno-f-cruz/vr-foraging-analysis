@@ -89,6 +89,116 @@ def calculate_choice_matrix(
     return switch_choice_data, switch_trials_df
 
 
+def _find_consecutive_run(sequence: np.ndarray, target_value: bool, n_consecutive: int) -> float:
+    """
+    Find the trial number where the first occurrence of n_consecutive target_value occurs.
+
+    Parameters
+    ----------
+    sequence : np.ndarray
+        Boolean array of choices
+    target_value : bool
+        Value to look for (True or False)
+    n_consecutive : int
+        Number of consecutive occurrences needed
+
+    Returns
+    -------
+    float
+        Trial number (1-indexed) where the run completes, or NaN if not found
+    """
+    if len(sequence) < n_consecutive:
+        return np.nan
+
+    consecutive_count = 0
+
+    for i, value in enumerate(sequence):
+        if value == target_value:
+            consecutive_count += 1
+            if consecutive_count == n_consecutive:
+                return i + 1
+        else:
+            consecutive_count = 0
+
+    return np.nan
+
+
+def calculate_consecutive_choice_runs(
+    all_trials_df: pd.DataFrame, switch_trials_df: pd.DataFrame, *, n_consecutive: int = 3, max_trials_ahead: int = 50
+) -> pd.DataFrame:
+    """
+    Calculate the number of trials after each switch to achieve N consecutive choices.
+
+    For each switch and each patch type, calculates how many trials it takes after
+    the switch to have N consecutive is_choice == True and N consecutive is_choice == False.
+
+    Parameters
+    ----------
+    all_trials_df : pd.DataFrame
+        DataFrame containing all trials data
+    switch_trials_df : pd.DataFrame
+        DataFrame containing switch trial information with original indices
+    n_consecutive : int, optional
+        Number of consecutive choices to look for, by default 3
+    max_trials_ahead : int, optional
+        Maximum number of trials to look ahead after switch, by default 50
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with columns: switch_index, patch_id, trials_to_n_consecutive_true,
+        trials_to_n_consecutive_false
+    """
+    results = []
+
+    for switch_idx, switch_trial in tqdm(
+        switch_trials_df.iterrows(), desc="Calculating consecutive runs", total=len(switch_trials_df)
+    ):
+        session_id = all_trials_df.loc[switch_idx]["session_id"]
+        session_trials = all_trials_df[all_trials_df["session_id"] == session_id]
+
+        # Get patch indices for this switch
+        high_patch_idx = switch_trial["after_high_index"]
+        low_patch_idx = switch_trial["after_low_index"]
+
+        for patch_id, patch_idx in enumerate([high_patch_idx, low_patch_idx]):
+            # Get trials after switch for this patch
+            after_switch_mask = (
+                (session_trials["trials_from_last_block_by_trial_type"] >= 0)
+                & (session_trials["trials_from_last_block_by_trial_type"] <= max_trials_ahead)
+                & (session_trials["block_index"] == all_trials_df.loc[switch_idx]["block_index"])
+                & (session_trials["patch_index"] == patch_idx)
+            )
+
+            after_switch_trials = session_trials[after_switch_mask].sort_values("trials_from_last_block_by_trial_type")
+
+            if len(after_switch_trials) == 0:
+                results.append(
+                    {
+                        "switch_index": switch_idx,
+                        "patch_id": patch_id,
+                        "trials_to_n_consecutive_true": np.nan,
+                        "trials_to_n_consecutive_false": np.nan,
+                    }
+                )
+                continue
+
+            choice_sequence = after_switch_trials["is_choice"].values
+            trials_to_true = _find_consecutive_run(choice_sequence, target_value=True, n_consecutive=n_consecutive)
+            trials_to_false = _find_consecutive_run(choice_sequence, target_value=False, n_consecutive=n_consecutive)
+
+            results.append(
+                {
+                    "switch_index": switch_idx,
+                    "patch_id": patch_id,
+                    "trials_to_n_consecutive_true": trials_to_true,
+                    "trials_to_n_consecutive_false": trials_to_false,
+                }
+            )
+
+    return pd.DataFrame(results)
+
+
 def plot_block_switch_choice_patterns(
     switch_choice_data: np.ndarray,
     trial_window: t.Tuple[int, int],
