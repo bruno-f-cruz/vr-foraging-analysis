@@ -44,10 +44,14 @@ def get_switches_df(
 
 
 def calculate_choice_matrix(
-    all_trials_df: pd.DataFrame, prob_switch_df: pd.DataFrame, *, trial_window: t.Tuple[int, int] = (-10, 30)
+    all_trials_df: pd.DataFrame,
+    *,
+    trial_window: t.Tuple[int, int] = (-10, 30),
+    block_switch_filter: t.Literal["same", "different", "both"] = "same",
 ) -> tuple[np.ndarray, pd.DataFrame]:
     """Calculate choice matrices around block switches for plotting. Returns a 3D numpy array of shape (num_switches, num_trials_in_window, 2) and a DataFrame of switch trials with original indices."""
     is_patch_low_after_zip = (0, 1)  # high, low
+    prob_switch_df = get_switches_df(all_trials_df, block_switch_filter=block_switch_filter)
 
     switch_choice_data = np.full(
         shape=(len(prob_switch_df), trial_window[1] - trial_window[0], len(is_patch_low_after_zip)),
@@ -85,6 +89,7 @@ def calculate_choice_matrix(
 
     switch_trials_df = all_trials_df.loc[switch_indices]
     switch_trials_df["index_ord"] = np.arange(len(switch_trials_df))
+    switch_trials_df = switch_trials_df.join(prob_switch_df)
 
     return switch_choice_data, switch_trials_df
 
@@ -146,7 +151,7 @@ def calculate_consecutive_choice_runs(
     Returns
     -------
     pd.DataFrame
-        DataFrame with columns: switch_index, patch_id, trials_to_n_consecutive_true,
+        DataFrame with columns: trial_index, patch_id, trials_to_n_consecutive_true,
         trials_to_n_consecutive_false
     """
     results = []
@@ -158,16 +163,16 @@ def calculate_consecutive_choice_runs(
         session_trials = all_trials_df[all_trials_df["session_id"] == session_id]
 
         # Get patch indices for this switch
-        high_patch_idx = switch_trial["after_high_index"]
-        low_patch_idx = switch_trial["after_low_index"]
+        high_patch_id = switch_trial["after_high_index"]
+        low_patch_id = switch_trial["after_low_index"]
 
-        for patch_id, patch_idx in enumerate([high_patch_idx, low_patch_idx]):
+        for patch_id in [high_patch_id, low_patch_id]:
             # Get trials after switch for this patch
             after_switch_mask = (
                 (session_trials["trials_from_last_block_by_trial_type"] >= 0)
                 & (session_trials["trials_from_last_block_by_trial_type"] <= max_trials_ahead)
                 & (session_trials["block_index"] == all_trials_df.loc[switch_idx]["block_index"])
-                & (session_trials["patch_index"] == patch_idx)
+                & (session_trials["patch_index"] == patch_id)
             )
 
             after_switch_trials = session_trials[after_switch_mask].sort_values("trials_from_last_block_by_trial_type")
@@ -175,7 +180,7 @@ def calculate_consecutive_choice_runs(
             if len(after_switch_trials) == 0:
                 results.append(
                     {
-                        "switch_index": switch_idx,
+                        "trial_index": switch_idx,
                         "patch_id": patch_id,
                         "trials_to_n_consecutive_true": np.nan,
                         "trials_to_n_consecutive_false": np.nan,
@@ -189,14 +194,31 @@ def calculate_consecutive_choice_runs(
 
             results.append(
                 {
-                    "switch_index": switch_idx,
+                    "trial_index": switch_idx,
                     "patch_id": patch_id,
                     "trials_to_n_consecutive_true": trials_to_true,
                     "trials_to_n_consecutive_false": trials_to_false,
                 }
             )
 
-    return pd.DataFrame(results)
+    results_df = pd.DataFrame(results)
+
+    # Merge with all_trials_df and switch_trials_df using trial_index
+    all_trials_reset = all_trials_df.reset_index()
+    loser_cols = all_trials_reset.columns.intersection(results_df.columns).difference(["index"])
+    results_df = results_df.merge(
+        all_trials_reset.drop(columns=loser_cols), left_on="trial_index", right_on="index", how="left"
+    )
+
+    switch_trials_reset = switch_trials_df.reset_index()
+    loser_cols = switch_trials_reset.columns.intersection(results_df.columns).difference(["index"])
+    results_df = results_df.merge(
+        switch_trials_reset.drop(columns=loser_cols), left_on="trial_index", right_on="index", how="left"
+    )
+
+    results_df["is_low_reward_patch"] = results_df["patch_id"] == results_df["after_low_index"]
+
+    return results_df
 
 
 def plot_block_switch_choice_patterns(
@@ -312,3 +334,61 @@ def plot_block_switch_choice_patterns(
         axes[2].legend()
 
     return fig, axes
+
+
+def plot_trials_to_criterion_histogram(
+    consecutive_runs_df: pd.DataFrame,
+    *,
+    ax: Optional[plt.Axes] = None,
+    figsize: t.Tuple[float, float] = (8, 6),
+    title: Optional[str] = None,
+) -> t.Tuple[plt.Figure, plt.Axes]:
+    """
+    Plot histogram of trials to reach criterion for high and low reward patches.
+
+    Parameters
+    ----------
+    consecutive_runs_df : pd.DataFrame
+        DataFrame containing consecutive runs data
+    ax : plt.Axes, optional
+        Axes to plot on, by default None
+    figsize : tuple[float, float], optional
+        Figure size if creating new figure, by default (8, 6)
+    title : str, optional
+        Plot title, by default None
+
+    Returns
+    -------
+    tuple[plt.Figure, plt.Axes]
+        Figure and Axes objects
+    """
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+    else:
+        fig = ax.figure
+
+    low_reward_data = consecutive_runs_df[consecutive_runs_df["is_low_reward_patch"]]["trials_to_n_consecutive_false"]
+    low_reward_data = low_reward_data.dropna()
+    ax.hist(low_reward_data, bins=range(0, 51), alpha=0.5, label="Low reward patch", color="b", density=True)
+
+    high_reward_data = consecutive_runs_df[~consecutive_runs_df["is_low_reward_patch"]]["trials_to_n_consecutive_true"]
+    high_reward_data = high_reward_data.dropna()
+    ax.hist(high_reward_data, bins=range(0, 51), alpha=0.5, label="High reward patch", color="r", density=True)
+
+    if len(low_reward_data) > 0:
+        low_median = np.median(low_reward_data)
+        ax.axvline(low_median, color="b", linestyle="-", linewidth=2, alpha=0.8, label=f"Low median: {low_median:.1f}")
+
+    if len(high_reward_data) > 0:
+        high_median = np.median(high_reward_data)
+        ax.axvline(
+            high_median, color="r", linestyle="-", linewidth=2, alpha=0.8, label=f"High median: {high_median:.1f}"
+        )
+
+    ax.set_xlabel("Trials to reach criterion")
+    ax.set_ylabel("Density")
+    if title:
+        ax.set_title(title)
+    ax.legend()
+
+    return fig, ax
