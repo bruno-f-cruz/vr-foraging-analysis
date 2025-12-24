@@ -98,3 +98,17 @@ def enrich_with_previous_trial(session: SessionDataset, n_previous: int = 5) -> 
             new_col = f"{col}_past_{i}"
             trials[new_col] = [trials[col][idx - i] if idx - i >= 0 else None for idx in range(n)]
     return trials
+
+
+def enrich_with_block_probability(session: SessionDataset) -> pd.DataFrame:
+    trials = session.trials
+
+    def get_block_reward_probability(row):
+        patch_index = row["patch_index"]
+        block_probabilities = row["block_patch_probabilities"]
+        if block_probabilities is None:
+            return None
+        return block_probabilities[patch_index]
+
+    trials["block_reward_probability"] = trials.apply(get_block_reward_probability, axis=1)
+    return trials
