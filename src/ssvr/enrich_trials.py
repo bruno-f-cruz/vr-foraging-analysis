@@ -1,3 +1,5 @@
+from typing import cast
+
 import numpy as np
 import pandas as pd
 from aind_behavior_vr_foraging import task_logic
@@ -111,4 +113,28 @@ def enrich_with_block_probability(session: SessionDataset) -> pd.DataFrame:
         return block_probabilities[patch_index]
 
     trials["block_reward_probability"] = trials.apply(get_block_reward_probability, axis=1)
+    return trials
+
+
+def enrich_with_session_type(session: SessionDataset) -> pd.DataFrame:
+    task_logic_schema = cast(
+        task_logic.AindVrForagingTaskLogic, session.dataset["Behavior"]["InputSchemas"]["TaskLogic"].data
+    )
+    a_patch = task_logic_schema.task_parameters.environment.blocks[0].environment_statistics.patches[0]
+    is_fixed_stop_duration = isinstance(
+        a_patch.reward_specification.operant_logic.stop_duration, task_logic.distributions.Scalar
+    )
+    session.trials["is_fixed_stop_duration"] = is_fixed_stop_duration
+    return session.trials
+
+
+def enrich_with_reward_rate(session: SessionDataset, exponential_decay: float = 0.5) -> pd.DataFrame:
+    trials = session.trials
+    trials["reward_rate"] = trials["is_rewarded"].ewm(alpha=exponential_decay, adjust=False).mean()
+    unique_patch_indices = trials["patch_index"].unique()
+    for patch_index in unique_patch_indices:
+        mask = trials["patch_index"] == patch_index
+        trials.loc[mask, "reward_rate_per_patch"] = (
+            trials.loc[mask, "is_rewarded"].ewm(alpha=exponential_decay, adjust=False).mean()
+        )
     return trials
