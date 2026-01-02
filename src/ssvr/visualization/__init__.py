@@ -106,8 +106,8 @@ def plot_ethogram(
         s=100,
     )
     ax2.scatter(
-        dataset.processed_streams.lick_onsets,
-        np.ones_like(dataset.processed_streams.lick_onsets) * 0.6,
+        dataset.processed_streams.lickometer.onsets,
+        np.ones_like(dataset.processed_streams.lickometer.onsets) * 0.6,
         color="green",
         label="Licks",
         marker="|",
