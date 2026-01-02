@@ -89,6 +89,7 @@ class Trial:
 class ProcessedStreams:
     position_velocity: pd.DataFrame
     lick_onsets: np.ndarray
+    sniff_ipi_frequency: Optional[pd.DataFrame]
 
 
 @dataclasses.dataclass
@@ -99,7 +100,6 @@ class SessionMetrics:
     reward_count: int  # number of collected reward events
     session_duration: datetime.timedelta  # duration of the session
     p_stop_per_odor: dict[int, float]  # probability of stopping per odor
-
     total_reward_ml: float = 0.0  # total reward collected in mL
 
 

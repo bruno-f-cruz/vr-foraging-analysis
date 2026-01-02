@@ -59,6 +59,56 @@ def compute_position_and_velocity(
     return df
 
 
+def process_sniff_detector(
+    dataset: contraqctor.contract.Dataset,
+    *,
+    notch_filter_freq: t.Optional[float] = 60.0,
+) -> t.Optional[pd.DataFrame]:
+    from scipy.interpolate import interp1d
+    from scipy.signal import butter, filtfilt, find_peaks, iirnotch
+
+    try:
+        data = dataset.at("Behavior").at("HarpSniffDetector").at("RawVoltage").load().data
+        data = data[data["MessageType"] == "EVENT"]
+        fs = (
+            dataset.at("Behavior")
+            .at("HarpSniffDetector")
+            .load()
+            .at("RawVoltageDispatchRate")
+            .load()
+            .data.iloc[-1]
+            .values[0]
+        )
+    except Exception as e:
+        logging.warning(f"Failed to load SniffDetector data: {e}")
+        return None
+
+    t = data.index.values
+    signal = data["RawVoltage"].values
+    dt = 1.0 / fs
+    t_uniform = np.arange(t[0], t[-1], dt)
+    interp_func = interp1d(t, signal, kind="linear", bounds_error=False, fill_value="extrapolate")
+    y_uniform = interp_func(t_uniform)
+    if notch_filter_freq is not None:
+        b_notch, a_notch = iirnotch(notch_filter_freq, 30.0, fs)
+        y_uniform = filtfilt(b_notch, a_notch, y_uniform)
+
+    b, a = butter(4, [0.2, 15], btype="bandpass", fs=fs)
+    y_filtered = filtfilt(b, a, y_uniform)
+
+    peaks, _ = find_peaks(y_filtered, height=0.5 * np.std(y_filtered), prominence=2.5)
+    ipi = np.diff(t_uniform[peaks])
+    frequency = 1.0 / ipi
+
+    return pd.DataFrame(
+        {
+            "IPI": ipi,
+            "Frequency": frequency,
+        },
+        index=pd.Index(t_uniform[peaks][1:], name="Seconds"),
+    )
+
+
 def process_lickometer(dataset: contraqctor.contract.Dataset, *, refractory_period_s: float = 0.02) -> np.ndarray:
     lickometer = dataset.at("Behavior").at("HarpLickometer").load().at("LickState").load().data.copy()
     lickometer = lickometer[lickometer["MessageType"] == "EVENT"]["Channel0"]
