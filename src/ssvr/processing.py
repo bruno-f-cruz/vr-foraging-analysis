@@ -8,7 +8,7 @@ import contraqctor
 import numpy as np
 import pandas as pd
 
-from .models import Site, Trial
+from .models import ProcessedLickometer, Site, Trial
 
 logger = logging.getLogger(__name__)
 
@@ -102,18 +102,52 @@ def process_sniff_detector(
 
     return pd.DataFrame(
         {
-            "IPI": ipi,
-            "Frequency": frequency,
+            "ipi": ipi,
+            "frequency": frequency,
         },
         index=pd.Index(t_uniform[peaks][1:], name="Seconds"),
     )
 
 
-def process_lickometer(dataset: contraqctor.contract.Dataset, *, refractory_period_s: float = 0.02) -> np.ndarray:
+def process_lickometer(
+    dataset: contraqctor.contract.Dataset, *, refractory_period_s: float = 0.02, dt_resample: float = 0.1
+) -> ProcessedLickometer:
     lickometer = dataset.at("Behavior").at("HarpLickometer").load().at("LickState").load().data.copy()
     lickometer = lickometer[lickometer["MessageType"] == "EVENT"]["Channel0"]
     lick_onsets = lickometer[(lickometer) & (~lickometer.shift(1, fill_value=False))].index
-    return lick_onsets.values
+    if len(lick_onsets) == 0:
+        return ProcessedLickometer(
+            onsets=np.array([]),
+            frequency=pd.DataFrame(
+                {"frequency": []},
+                index=pd.Index([], name="Seconds"),
+            ),
+        )
+
+    keep = np.ones(len(lick_onsets), dtype=bool)
+    keep[1:] = np.diff(lick_onsets) >= refractory_period_s
+    kept = lick_onsets[keep]
+
+    t_start = lickometer.index.values[0]
+    t_end = lickometer.index.values[-1]
+
+    bin_edges = np.arange(t_start, t_end + dt_resample, dt_resample)
+    counts, _ = np.histogram(kept, bins=bin_edges)
+
+    frequency_hz = counts / dt_resample
+
+    bin_centers = bin_edges[:-1] + dt_resample / 2
+
+    frequency = pd.Series(
+        frequency_hz,
+        index=pd.Index(bin_centers, name="Seconds"),
+        name="frequency",
+    )
+
+    return ProcessedLickometer(
+        onsets=kept,
+        frequency=frequency,
+    )
 
 
 def parse_trials(dataset: contraqctor.contract.Dataset) -> pd.DataFrame:

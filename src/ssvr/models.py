@@ -86,9 +86,15 @@ class Trial:
 
 
 @dataclasses.dataclass
+class ProcessedLickometer:
+    onsets: np.ndarray
+    frequency: pd.DataFrame
+
+
+@dataclasses.dataclass
 class ProcessedStreams:
     position_velocity: pd.DataFrame
-    lick_onsets: np.ndarray
+    lickometer: ProcessedLickometer
     sniff_ipi_frequency: Optional[pd.DataFrame]
 
 

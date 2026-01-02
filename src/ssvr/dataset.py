@@ -145,6 +145,6 @@ def get_processed_data_streams(
 ) -> "ProcessedStreams":
     return ProcessedStreams(
         position_velocity=compute_position_and_velocity(dataset, downsample_to_hz=settings.downsample_position_to),
-        lick_onsets=process_lickometer(dataset, refractory_period_s=settings.lickometer_refractory_period_s),
+        lickometer=process_lickometer(dataset, refractory_period_s=settings.lickometer_refractory_period_s),
         sniff_ipi_frequency=process_sniff_detector(dataset),
     )
