@@ -1,4 +1,6 @@
 root_path: ['C:\Data\single-site-dataset']
+session_manifest_path: './sessions.csv'
+root_derived_path: './derived'
 processing_settings:
   downsample_position_to: 60
   lickometer_refractory_period_s: 0.02

@@ -10,7 +10,7 @@ import semver
 from aind_behavior_vr_foraging import __semver__ as vrf_version
 from aind_behavior_vr_foraging.data_contract import dataset
 
-from .models import DataLoadingSettings, FilterOn, ProcessedStreams, ProcessingSettings, SessionInfo, SessionMetrics
+from .models import ProcessedStreams, ProcessingSettings, SessionInfo, SessionMetrics
 from .processing import (
     compute_position_and_velocity,
     parse_trials,
@@ -20,26 +20,6 @@ from .processing import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-def find_session_info(
-    settings: DataLoadingSettings,
-) -> list[SessionInfo]:
-    unique_sessions: list[SessionInfo] = []
-    for root_path in settings.root_path:
-        if not root_path.exists():
-            logger.warning(f"Root path {root_path} does not exist. Skipping.")
-            continue
-        all_sessions = list(map(create_session_info, root_path.iterdir()))
-        for session in all_sessions:
-            if session.session_id in [s.session_id for s in unique_sessions]:
-                continue
-
-            if (len(settings.filters) == 0) or (
-                any(is_accept_session(session, filter_on) for filter_on in settings.filters)
-            ):
-                unique_sessions.append(session)
-    return unique_sessions
 
 
 def create_session_info(session_path: Path) -> SessionInfo:
@@ -73,25 +53,6 @@ def create_session_info(session_path: Path) -> SessionInfo:
         data_path=session_path,
         version=version,
     )
-
-
-def is_accept_session(session: SessionInfo, filter: FilterOn):
-    if (filter.start_date) and (session.date < filter.start_date):
-        logger.debug(f"Session {session.session_id} on {session.date} rejected by start_date {filter.start_date}")
-        return False
-    if (filter.end_date) and (session.date > filter.end_date):
-        logger.debug(f"Session {session.session_id} on {session.date} rejected by end_date {filter.end_date}")
-        return False
-    if (filter.session_ids) and (session.session_id not in filter.session_ids):
-        logger.debug(f"Session {session.session_id} on {session.date} rejected by session_ids {filter.session_ids}")
-        return False
-    logger.debug(f"Session {session.session_id} on {session.date} accepted")
-    if (filter.subjects) and (session.subject not in filter.subjects):
-        logger.debug(
-            f"Session {session.session_id} for subject {session.subject} rejected by subjects {filter.subjects}"
-        )
-        return False
-    return True
 
 
 @dataclasses.dataclass

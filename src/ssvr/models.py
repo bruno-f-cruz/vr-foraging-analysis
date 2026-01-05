@@ -17,29 +17,10 @@ class ProcessingSettings(BaseModel):
     lickometer_refractory_period_s: float = 0.02  # seconds
 
 
-class FilterOn(BaseModel):
-    start_date: Optional[datetime.date] = Field(
-        default=None,
-        description="Start date to filter session. If None, no filtering on start date.",
-    )
-    end_date: Optional[datetime.date] = Field(
-        default=None,
-        description="End date to filter session. If None, no filtering on end date.",
-    )
-    session_ids: Optional[list[str]] = Field(
-        default=None,
-        description="List of session IDs to filter. If None, no filtering on session IDs.",
-    )
-    subjects: Optional[list[str]] = Field(
-        default=None,
-        description="List of subjects to filter. If None, no filtering on subjects.",
-    )
-
-
 class DataLoadingSettings(pydantic_settings.BaseSettings, yaml_file="sessions.yaml"):
     root_path: list[Path] = Field(description="Root path to the data directory")
-    root_derived_path: Path = Field(Path("./derived_data"), description="Root path to the derived data directory")
-    filters: list[FilterOn] = Field(default_factory=list, description="Dictionary of subject filters")
+    root_derived_path: Path = Field(Path("./derived"), description="Root path to the derived data directory")
+    session_manifest_path: Path = Field(Path("./sessions.csv"), description="Path to the session manifest CSV file")
     dataset_version: str = Field(default=vrf_version, description="Version of the dataset to use")
     processing_settings: "ProcessingSettings" = Field(default=ProcessingSettings(), validate_default=True)
 
