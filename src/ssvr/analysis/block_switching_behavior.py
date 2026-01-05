@@ -59,7 +59,7 @@ def calculate_choice_matrix(
         dtype=float,
     )
     switch_indices = []
-    for i_switch, (trial_switch, row) in tqdm(enumerate(prob_switch_df.iterrows()), desc="Processing block switches"):
+    for i_switch, (trial_switch, row) in tqdm(enumerate(prob_switch_df.iterrows()), desc="Processing block switches", total=len(prob_switch_df)):
         switch_trial = all_trials_df.loc[trial_switch]
         switch_indices.append(trial_switch)
         session_id = switch_trial["session_id"]
