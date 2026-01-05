@@ -1,6 +1,8 @@
 import dataclasses
 import logging
 import typing as t
+from functools import partial
+from typing import Callable
 
 import aind_behavior_vr_foraging.rig as vrf_rig
 import aind_behavior_vr_foraging.task_logic as vrf_task
@@ -364,3 +366,189 @@ def process_sites(dataset: contraqctor.contract.Dataset) -> pd.DataFrame:
         axis=1,
     )
     return df
+
+
+_extra_column_timestamp_name: str = "_aligned_timestamp_"
+_extra_column_index_name: str = "_alignment_index_"
+
+
+def aligned_to(
+    timestamps: np.ndarray | pd.Series | pd.DataFrame,
+    timeseries: pd.Series | pd.DataFrame,
+    *,
+    event_window: tuple[float, float] = (-1, 1),
+) -> pd.DataFrame:
+    # Normalize/sanitize timestamps input
+    if isinstance(timestamps, np.ndarray):
+        assert timestamps.ndim == 1, "Timestamps array must be one-dimensional"
+        timestamps_array = timestamps
+    elif isinstance(timestamps, (pd.Series, pd.DataFrame)):
+        timestamps_array = timestamps.index.to_numpy()
+    else:
+        timestamps_array = np.array(timestamps)
+
+    if isinstance(timeseries, pd.Series):
+        timeseries = timeseries.to_frame()
+
+    assert _extra_column_timestamp_name not in timeseries.columns, (
+        f"Column {_extra_column_timestamp_name} already exists in timeseries"
+    )
+    assert _extra_column_index_name not in timeseries.columns, (
+        f"Column {_extra_column_index_name} already exists in timeseries"
+    )
+
+    snippets = []
+    for idx, ts in enumerate(timestamps_array):
+        _win = np.array(event_window) + ts
+        mask = (timeseries.index >= _win[0]) & (timeseries.index <= _win[1])
+        snippet = timeseries.loc[mask].copy()
+        snippet[_extra_column_timestamp_name] = snippet.index - ts
+        snippet[_extra_column_index_name] = idx
+        snippets.append(snippet)
+
+    return pd.concat(snippets, ignore_index=False) if snippets else timeseries.iloc[0:0].copy()
+
+
+suffix_chunk_session_idx = "_chunk_session_idx_"
+
+
+def aligned_to_grouped_by(
+    timestamp_df: pd.DataFrame | list[pd.DataFrame],
+    timeseries: pd.Series | list[pd.Series],
+    by: list[t.Any] | None = None,
+    timestamp_column: str | None = None,
+    *,
+    event_window: tuple[float, float] = (-1, 1),
+) -> t.Tuple[dict[t.Any, pd.DataFrame], list[t.Any]]:
+    if isinstance(timestamp_df, list) != isinstance(timeseries, list):
+        raise ValueError("timestamp_df and timeseries must both be lists or both be single DataFrames/Series.")
+
+    timestamp_df = [timestamp_df] if not isinstance(timestamp_df, list) else timestamp_df
+    timeseries = [timeseries] if not isinstance(timeseries, list) else timeseries
+
+    if len(timestamp_df) != len(timeseries):
+        raise ValueError("If timestamp_df and timeseries are lists, they must be of the same length.")
+
+    by = by or []
+
+    _summary_data: dict[t.Any, list[pd.DataFrame]] = {}
+
+    for session_idx, (session_timestamp_df, session_timeseries) in enumerate(zip(timestamp_df, timeseries)):
+        for _tup, df in session_timestamp_df.groupby(by):
+            if timestamp_column is not None:
+                timestamps = df[timestamp_column].to_numpy()
+            else:
+                timestamps = df.index.to_numpy()
+
+            data = aligned_to(
+                timestamps,
+                session_timeseries,
+                event_window=event_window,
+            )
+            data[suffix_chunk_session_idx] = session_idx
+            _summary_data.setdefault(_tup, []).append(data)
+
+    _new_summary_data: dict[t.Any, pd.DataFrame] = {}
+    for key in _summary_data:
+        _new_summary_data[key] = pd.concat(_summary_data[key], ignore_index=True)
+    return _new_summary_data, by
+
+
+def is_one_dimensional_array(arr: np.ndarray) -> bool:
+    if not isinstance(arr, np.ndarray):
+        raise ValueError("Input is not a numpy ndarray.")
+    if arr.ndim == 1:
+        return True
+    if arr.ndim == 2 and 1 in arr.shape:
+        return True
+    if arr.ndim > 2 and all(dim == 1 for dim in arr.shape[2:]):
+        return True
+    return False
+
+
+def summarize_aligned_to(
+    aligned: pd.DataFrame,
+    *,
+    time_bin_width: float = 0.025,
+    agg_fnc: Callable[[np.ndarray], np.ndarray] = partial(np.nanmean, axis=1),
+    agg_spread_fnc: Callable[[np.ndarray], t.Iterable[np.ndarray] | np.ndarray] = partial(
+        np.nanpercentile, q=[2.5, 97.5], axis=1
+    ),
+    agg_spread_flattening_axis: int = 0,
+    data_column_name: t.Optional[str] = None,
+    new_index: t.Optional[pd.Index] = None,
+) -> pd.DataFrame:
+    if new_index is None:
+        new_index = pd.Index(
+            np.arange(
+                aligned[_extra_column_timestamp_name].min(),
+                aligned[_extra_column_timestamp_name].max(),
+                time_bin_width,
+            )
+        )
+
+    data_column_name = data_column_name or aligned.columns[0]
+
+    n_chunks = aligned[_extra_column_index_name].max()
+    binned_data = np.full((len(new_index), n_chunks + 1), np.nan)
+    for i_chunk, chunk_df in aligned.groupby(_extra_column_index_name):
+        binned_data[:, i_chunk] = np.interp(
+            new_index, chunk_df[_extra_column_timestamp_name], chunk_df[data_column_name].values
+        )
+    summarized_df = pd.DataFrame(
+        {
+            "agg": agg_fnc(binned_data),
+        },
+        index=new_index,
+    )
+    agg_spread = agg_spread_fnc(binned_data)
+
+    if isinstance(agg_spread, np.ndarray):
+        if is_one_dimensional_array(agg_spread):
+            agg_spread = [np.squeeze(agg_spread)]
+        elif agg_spread.ndim == 2:
+            agg_spread = [np.squeeze(agg_spread[i, :]) for i in range(agg_spread.shape[agg_spread_flattening_axis])]
+        else:
+            raise ValueError("agg_spread_fnc returned an ndarray with more than one dimension.")
+
+    if not isinstance(agg_spread, t.Iterable):
+        raise ValueError("agg_spread_fnc must return an iterable of arrays.")
+
+    for i, spread in enumerate(agg_spread):
+        summarized_df[f"agg_spread_{i}"] = np.squeeze(spread)
+    return summarized_df
+
+
+def summarize_grouped_by(
+    grouped: dict[t.Any, pd.DataFrame],
+    *,
+    time_bin_width: float = 0.025,
+    agg_fnc: Callable[[np.ndarray], np.ndarray] = partial(np.nanmean, axis=1),
+    agg_spread_fnc: Callable[[np.ndarray], t.Iterable[np.ndarray] | np.ndarray] = partial(
+        np.nanpercentile, q=[2.5, 97.5], axis=1
+    ),
+    data_column_name: t.Optional[str] = None,
+) -> dict[t.Any, pd.DataFrame]:
+    summarized_by_group: dict[t.Any, pd.DataFrame] = {}
+    new_index = pd.Index(
+        np.arange(
+            min(df[_extra_column_timestamp_name].min() for df in grouped.values()),
+            max(df[_extra_column_timestamp_name].max() for df in grouped.values()),
+            time_bin_width,
+        )
+    )
+
+    data_column_name = data_column_name or grouped[next(iter(grouped))].columns[0]
+
+    for group, df in grouped.items():
+        _new_df = summarize_aligned_to(
+            df,
+            time_bin_width=time_bin_width,
+            agg_fnc=agg_fnc,
+            agg_spread_fnc=agg_spread_fnc,
+            data_column_name=data_column_name,
+            new_index=new_index,
+        )
+        summarized_by_group[group] = _new_df
+
+    return summarized_by_group
