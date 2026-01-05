@@ -342,6 +342,7 @@ def plot_trials_to_criterion_histogram(
     ax: Optional[plt.Axes] = None,
     figsize: t.Tuple[float, float] = (8, 6),
     title: Optional[str] = None,
+    plot_kernel: bool = True,
 ) -> t.Tuple[plt.Figure, plt.Axes]:
     """
     Plot histogram of trials to reach criterion for high and low reward patches.
@@ -356,6 +357,8 @@ def plot_trials_to_criterion_histogram(
         Figure size if creating new figure, by default (8, 6)
     title : str, optional
         Plot title, by default None
+    plot_kernel : bool, optional
+        Whether to overlay kernel density estimate, by default True
 
     Returns
     -------
@@ -374,6 +377,20 @@ def plot_trials_to_criterion_histogram(
     high_reward_data = consecutive_runs_df[~consecutive_runs_df["is_low_reward_patch"]]["trials_to_n_consecutive_true"]
     high_reward_data = high_reward_data.dropna()
     ax.hist(high_reward_data, bins=range(0, 51), alpha=0.5, label="High reward patch", color="r", density=True)
+
+    # Plot kernel density estimates
+    if plot_kernel:
+        from scipy.stats import gaussian_kde
+
+        if len(low_reward_data) > 1:
+            kde_low = gaussian_kde(low_reward_data)
+            x_range = np.linspace(low_reward_data.min(), low_reward_data.max(), 200)
+            ax.plot(x_range, kde_low(x_range), color="b", linewidth=2, alpha=0.8)
+
+        if len(high_reward_data) > 1:
+            kde_high = gaussian_kde(high_reward_data)
+            x_range = np.linspace(high_reward_data.min(), high_reward_data.max(), 200)
+            ax.plot(x_range, kde_high(x_range), color="r", linewidth=2, alpha=0.8)
 
     if len(low_reward_data) > 0:
         low_median = np.median(low_reward_data)

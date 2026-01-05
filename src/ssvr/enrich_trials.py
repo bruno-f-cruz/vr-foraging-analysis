@@ -130,6 +130,9 @@ def enrich_with_session_type(session: SessionDataset) -> pd.DataFrame:
 
 
 def enrich_with_reward_rate(session: SessionDataset, exponential_decay: float = 0.5) -> pd.DataFrame:
+    """Calculate reward rate using exponential moving average.
+    It only takes into account trials where the stop was successful (i.e., is_rewarded is not NaN).
+    """
     trials = session.trials
     trials["reward_rate"] = trials["is_rewarded"].ewm(alpha=exponential_decay, adjust=False).mean()
     unique_patch_indices = trials["patch_index"].unique()

@@ -24,8 +24,8 @@ FEATURE_SPECS = [
     FeatureSpec("choice", "Previous Choice", "blue", "o"),
     FeatureSpec("outcome", "Previous Outcome", "green", "s"),
     FeatureSpec("sameness", "Sameness", "purple", "^"),
-    FeatureSpec("interaction_outcome", "Sameness x Outcome", "red", "d"),
-    FeatureSpec("interaction_choice", "Sameness x Choice", "orange", "v"),
+    FeatureSpec("same_reward", "Same x Reward", "red", "d"),
+    FeatureSpec("other_reward", "Other x Reward", "orange", "v"),
 ]
 
 
@@ -52,8 +52,8 @@ def create_regression_design_matrix(trials_df: pd.DataFrame, n_back: int = 3) ->
     - Previous choice: y_{t-k}
     - Previous outcome: o_{t-k}
     - Sameness: s_{t-k} (same=+1, different=-1)
-    - Sameness x Outcome: s_{t-k} · o_{t-k}
-    - Sameness x Choice: s_{t-k} · y_{t-k}
+    - Same x Reward: o_{t-k} if s_{t-k}=+1, else 0
+    - Other x Reward: o_{t-k} if s_{t-k}=-1, else 0
 
     Parameters
     ----------
@@ -90,18 +90,19 @@ def create_regression_design_matrix(trials_df: pd.DataFrame, n_back: int = 3) ->
         valid_history = prev_choice.notna() & prev_outcome.notna() & prev_patch.notna()
         sameness = (df["patch_index"] == prev_patch).astype(int) * 2 - 1
 
-        new_cols[f"lag_{k}_choice"] = prev_choice
-        new_cols[f"lag_{k}_outcome"] = prev_outcome
-        new_cols[f"lag_{k}_sameness"] = sameness
-        new_cols[f"lag_{k}_interaction_outcome"] = sameness * prev_outcome
-        new_cols[f"lag_{k}_interaction_choice"] = sameness * prev_choice
+        # Same x Reward: outcome if same patch (+1), else 0
+        same_reward = pd.Series(np.where(sameness == 1, prev_outcome, 0), index=df.index)
 
-        cols_for_lag = get_feature_names_for_lag(k)
+        # Other x Reward: outcome if different patch (-1), else 0
+        other_reward = pd.Series(np.where(sameness == -1, prev_outcome, 0), index=df.index)
 
-        for col in cols_for_lag:
-            new_cols[col] = new_cols[col].mask(~valid_history, np.nan)
+        new_cols[f"lag_{k}_outcome"] = prev_outcome.mask(~valid_history, np.nan)
+        new_cols[f"lag_{k}_sameness"] = sameness.mask(~valid_history, np.nan)
+        new_cols[f"lag_{k}_same_reward"] = same_reward.mask(~valid_history, np.nan)
+        new_cols[f"lag_{k}_other_reward"] = other_reward.mask(~valid_history, np.nan)
+        new_cols[f"lag_{k}_choice"] = prev_choice * 2 - 1  # Convert to {-1, +1}
 
-        feature_cols.extend(cols_for_lag)
+        feature_cols.extend(get_feature_names_for_lag(k))
 
     new_features_df = pd.DataFrame(new_cols, index=df.index)
     df = pd.concat([df, new_features_df], axis=1)
