@@ -9,7 +9,7 @@ import pydantic_settings
 import semver
 from aind_behavior_vr_foraging import __semver__ as vrf_version
 from aind_behavior_vr_foraging import task_logic as vrf_task
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class ProcessingSettings(BaseModel):
@@ -20,9 +20,19 @@ class ProcessingSettings(BaseModel):
 class DataLoadingSettings(pydantic_settings.BaseSettings, yaml_file="sessions.yaml"):
     root_path: list[Path] = Field(description="Root path to the data directory")
     root_derived_path: Path = Field(Path("./derived"), description="Root path to the derived data directory")
-    session_manifest_path: Path = Field(Path("./sessions.csv"), description="Path to the session manifest CSV file")
     dataset_version: str = Field(default=vrf_version, description="Version of the dataset to use")
     processing_settings: "ProcessingSettings" = Field(default=ProcessingSettings(), validate_default=True)
+    sessions_to_load: list["SessionToLoad"] = Field(default_factory=list, description="List of sessions to load")
+
+    @field_validator("sessions_to_load", mode="after")
+    @classmethod
+    def ensure_unique_sessions(cls, v: list["SessionToLoad"]) -> list["SessionToLoad"]:
+        """Ensure that session IDs are unique in the sessions_to_load list"""
+        session_ids = [entry.session_id for entry in v]
+        if len(session_ids) != len(set(session_ids)):
+            duplicates = set([x for x in session_ids if session_ids.count(x) > 1])
+            raise ValueError(f"Duplicate session IDs found in sessions_to_load: {duplicates}")
+        return v
 
     @classmethod
     def settings_customise_sources(
@@ -41,6 +51,11 @@ class DataLoadingSettings(pydantic_settings.BaseSettings, yaml_file="sessions.ya
             file_secret_settings,
             pydantic_settings.YamlConfigSettingsSource(settings_cls),
         )
+
+
+class SessionToLoad(BaseModel):
+    session_id: str
+    crop_max_trials: Optional[int] = None  # If set, only load up to this many trials
 
 
 @dataclasses.dataclass
