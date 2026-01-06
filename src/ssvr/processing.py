@@ -1,8 +1,6 @@
 import dataclasses
 import logging
 import typing as t
-from functools import partial
-from typing import Callable
 
 import aind_behavior_vr_foraging.rig as vrf_rig
 import aind_behavior_vr_foraging.task_logic as vrf_task
@@ -431,7 +429,7 @@ def aligned_to_grouped_by(
 
     by = by or []
 
-    _summary_data: dict[t.Any, list[pd.DataFrame]] = {}
+    _summary_data: dict[tuple[t.Any, ...], list[pd.DataFrame]] = {}
 
     for session_idx, (session_timestamp_df, session_timeseries) in enumerate(zip(timestamp_df, timeseries)):
         for _tup, df in session_timestamp_df.groupby(by):
@@ -448,7 +446,7 @@ def aligned_to_grouped_by(
             data[suffix_chunk_session_idx] = session_idx
             _summary_data.setdefault(_tup, []).append(data)
 
-    _new_summary_data: dict[t.Any, pd.DataFrame] = {}
+    _new_summary_data: dict[tuple[t.Any, ...], pd.DataFrame] = {}
     for key in _summary_data:
         _new_summary_data[key] = pd.concat(_summary_data[key], ignore_index=True)
     return _new_summary_data, by
@@ -470,11 +468,6 @@ def summarize_aligned_to(
     aligned: pd.DataFrame,
     *,
     time_bin_width: float = 0.025,
-    agg_fnc: Callable[[np.ndarray], np.ndarray] = partial(np.nanmean, axis=1),
-    agg_spread_fnc: Callable[[np.ndarray], t.Iterable[np.ndarray] | np.ndarray] = partial(
-        np.nanpercentile, q=[2.5, 97.5], axis=1
-    ),
-    agg_spread_flattening_axis: int = 0,
     data_column_name: t.Optional[str] = None,
     new_index: t.Optional[pd.Index] = None,
 ) -> pd.DataFrame:
@@ -493,43 +486,30 @@ def summarize_aligned_to(
     binned_data = np.full((len(new_index), n_chunks + 1), np.nan)
     for i_chunk, chunk_df in aligned.groupby(_extra_column_index_name):
         binned_data[:, i_chunk] = np.interp(
-            new_index, chunk_df[_extra_column_timestamp_name], chunk_df[data_column_name].values
+            new_index.values, chunk_df[_extra_column_timestamp_name].values, chunk_df[data_column_name].values
         )
+
     summarized_df = pd.DataFrame(
         {
-            "agg": agg_fnc(binned_data),
+            "mean": np.nanmean(binned_data, axis=1),
+            "median": np.nanmedian(binned_data, axis=1),
+            "std": np.nanstd(binned_data, axis=1),
+            "sem": np.nanstd(binned_data, axis=1) / np.sqrt(np.sum(~np.isnan(binned_data), axis=1)),
+            "lower_ci": np.nanpercentile(binned_data, q=2.5, axis=1),
+            "upper_ci": np.nanpercentile(binned_data, q=97.5, axis=1),
         },
         index=new_index,
     )
-    agg_spread = agg_spread_fnc(binned_data)
-
-    if isinstance(agg_spread, np.ndarray):
-        if is_one_dimensional_array(agg_spread):
-            agg_spread = [np.squeeze(agg_spread)]
-        elif agg_spread.ndim == 2:
-            agg_spread = [np.squeeze(agg_spread[i, :]) for i in range(agg_spread.shape[agg_spread_flattening_axis])]
-        else:
-            raise ValueError("agg_spread_fnc returned an ndarray with more than one dimension.")
-
-    if not isinstance(agg_spread, t.Iterable):
-        raise ValueError("agg_spread_fnc must return an iterable of arrays.")
-
-    for i, spread in enumerate(agg_spread):
-        summarized_df[f"agg_spread_{i}"] = np.squeeze(spread)
     return summarized_df
 
 
 def summarize_grouped_by(
-    grouped: dict[t.Any, pd.DataFrame],
+    grouped: dict[tuple[t.Any, ...], pd.DataFrame],
     *,
     time_bin_width: float = 0.025,
-    agg_fnc: Callable[[np.ndarray], np.ndarray] = partial(np.nanmean, axis=1),
-    agg_spread_fnc: Callable[[np.ndarray], t.Iterable[np.ndarray] | np.ndarray] = partial(
-        np.nanpercentile, q=[2.5, 97.5], axis=1
-    ),
     data_column_name: t.Optional[str] = None,
-) -> dict[t.Any, pd.DataFrame]:
-    summarized_by_group: dict[t.Any, pd.DataFrame] = {}
+) -> dict[tuple[t.Any, ...], pd.DataFrame]:
+    summarized_by_group: dict[tuple[t.Any, ...], pd.DataFrame] = {}
     new_index = pd.Index(
         np.arange(
             min(df[_extra_column_timestamp_name].min() for df in grouped.values()),
@@ -544,8 +524,6 @@ def summarize_grouped_by(
         _new_df = summarize_aligned_to(
             df,
             time_bin_width=time_bin_width,
-            agg_fnc=agg_fnc,
-            agg_spread_fnc=agg_spread_fnc,
             data_column_name=data_column_name,
             new_index=new_index,
         )
