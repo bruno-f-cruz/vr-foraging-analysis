@@ -1,8 +1,7 @@
 import logging
 from contextlib import contextmanager
-from functools import partial
 from itertools import cycle
-from typing import Any, Callable, Literal, Optional
+from typing import Any, Literal, Optional
 
 import numpy as np
 import pandas as pd
@@ -10,6 +9,7 @@ from aind_behavior_vr_foraging import task_logic as vrf_task
 from matplotlib import pyplot as plt
 
 from ..dataset import SessionDataset
+from ..processing import aligned_to_grouped_by, summarize_grouped_by
 
 logger = logging.getLogger(__name__)
 
@@ -188,11 +188,10 @@ def _get_default_plot_kwargs(cmap: cycle) -> dict[str, Any]:
 
 
 def plot_summarized_grouped_by(
-    summarized_df: dict[tuple[t.Any, ...], pd.DataFrame],
+    summarized_df: dict[tuple[Any, ...], pd.DataFrame],
     by_labels: list[str] | None = None,
-    plot_kwargs: Optional[dict[tuple[t.Any, ...], dict[str, Any]]] = None,
+    plot_kwargs: Optional[dict[tuple[Any, ...], dict[str, Any]]] = None,
     *,
-    timestamp_column: str | None = None,
     agg_plot_kwarg_modifier: dict[str, Any] = {"alpha": 1, "linewidth": 2},
     agg_spread_kwarg_modifier: dict[str, Any] = {"alpha": 0.1, "linewidth": 0},
     ax: Optional[plt.Axes] = None,
@@ -220,7 +219,7 @@ def plot_summarized_grouped_by(
             _these_plot_kwargs = plot_kwargs[_group_key]
 
         ax.plot(
-            group_df.index if timestamp_column is None else group_df[timestamp_column],
+            group_df.index,
             group_df["mean"],
             label=", ".join(f"{col}={val}" for col, val in zip(by_labels, _group_key))
             if by_labels
@@ -228,7 +227,7 @@ def plot_summarized_grouped_by(
             **{**_these_plot_kwargs, **agg_plot_kwarg_modifier},
         )
         ax.fill_between(
-            group_df.index if timestamp_column is None else group_df[timestamp_column],
+            group_df.index,
             group_df["lower_ci"],
             group_df["upper_ci"],
             **{**_these_plot_kwargs, **agg_spread_kwarg_modifier},
@@ -239,6 +238,43 @@ def plot_summarized_grouped_by(
         ax.set_xlabel("Time from event (s)")
         ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left", borderaxespad=0.0)
     return ax
+
+
+def plot_aligned_to_grouped_by(
+    timestamp_df: pd.DataFrame | list[pd.DataFrame],
+    timeseries: pd.Series | list[pd.Series],
+    by: list[Any] | None = None,
+    plot_kwargs: Optional[dict[tuple[Any, ...], dict[str, Any]]] = None,
+    *,
+    timestamp_column: str | None = None,
+    event_window: tuple[float, float] = (-1, 1),
+    time_bin_width: float = 0.025,
+    agg_plot_kwarg_modifier: dict[str, Any] = {"alpha": 1, "linewidth": 2},
+    agg_spread_kwarg_modifier: dict[str, Any] = {"alpha": 0.1, "linewidth": 0},
+    ax: Optional[plt.Axes] = None,
+) -> tuple[plt.Figure, plt.Axes]:
+    df_out, _ = aligned_to_grouped_by(
+        timestamp_df=timestamp_df,
+        timeseries=timeseries,
+        by=by,
+        timestamp_column=timestamp_column,
+        event_window=event_window,
+    )
+
+    summarized = summarize_grouped_by(
+        df_out,
+        time_bin_width=time_bin_width,
+    )
+
+    ax = plot_summarized_grouped_by(
+        summarized_df=summarized,
+        by_labels=by,
+        plot_kwargs=plot_kwargs,
+        agg_plot_kwarg_modifier=agg_plot_kwarg_modifier,
+        agg_spread_kwarg_modifier=agg_spread_kwarg_modifier,
+        ax=ax,
+    )
+    return (ax.figure, ax)
 
 
 def plot_session_trials(

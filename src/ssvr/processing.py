@@ -414,8 +414,8 @@ def aligned_to_grouped_by(
     timestamp_df: pd.DataFrame | list[pd.DataFrame],
     timeseries: pd.Series | list[pd.Series],
     by: list[t.Any] | None = None,
-    timestamp_column: str | None = None,
     *,
+    timestamp_column: str | None = None,
     event_window: tuple[float, float] = (-1, 1),
 ) -> t.Tuple[dict[t.Any, pd.DataFrame], list[t.Any]]:
     if isinstance(timestamp_df, list) != isinstance(timeseries, list):
