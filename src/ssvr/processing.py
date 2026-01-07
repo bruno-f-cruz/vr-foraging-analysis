@@ -123,20 +123,15 @@ def process_sniff_detector(
 
 def process_lickometer(
     dataset: contraqctor.contract.Dataset, *, refractory_period_s: float = 0.05, dt_resample: float = 0.1
-) -> ProcessedLickometer:
+) -> ProcessedLickometer | None:
     from contraqctor.qc.harp import lickety_split
 
     lickometer = dataset.at("Behavior").at("HarpLickometer").load().at("LickState").load().data.copy()
     lickometer = lickometer[lickometer["MessageType"] == "EVENT"]["Channel0"]
     lick_onsets = lickometer[(lickometer) & (~lickometer.shift(1, fill_value=False))].index
     if len(lick_onsets) == 0:
-        return ProcessedLickometer(
-            onsets=np.array([]),
-            frequency=pd.DataFrame(
-                {"frequency": []},
-                index=pd.Index([], name="Seconds"),
-            ),
-        )
+        logging.warning("No lick onsets found in lickometer data.")
+        return None
 
     suite = lickety_split.HarpLicketySplitTestSuite(
         dataset.at("Behavior").at("HarpLickometer"), lick_refractory_period=refractory_period_s
@@ -146,13 +141,7 @@ def process_lickometer(
         logging.warning(
             f"Lickometer data quality test failed: Minimum Lick Rate Test - {test_minimum_lick_rate.result}"
         )
-        return ProcessedLickometer(
-            onsets=np.array([]),
-            frequency=pd.DataFrame(
-                {"frequency": []},
-                index=pd.Index([], name="Seconds"),
-            ),
-        )
+        return None
 
     keep = np.ones(len(lick_onsets), dtype=bool)
     keep[1:] = np.diff(lick_onsets) >= refractory_period_s
@@ -542,10 +531,12 @@ def summarize_grouped_by(
     data_column_name: t.Optional[str] = None,
 ) -> dict[tuple[t.Any, ...], pd.DataFrame]:
     summarized_by_group: dict[tuple[t.Any, ...], pd.DataFrame] = {}
+    if not grouped or all(df.empty for df in grouped.values()):
+        return summarized_by_group
     new_index = pd.Index(
         np.arange(
-            min(df[_extra_column_timestamp_name].min() for df in grouped.values()),
-            max(df[_extra_column_timestamp_name].max() for df in grouped.values()),
+            min(df[_extra_column_timestamp_name].min() for df in grouped.values() if not df.empty),
+            max(df[_extra_column_timestamp_name].max() for df in grouped.values() if not df.empty),
             time_bin_width,
         )
     )

@@ -90,7 +90,7 @@ class ProcessedLickometer:
 @dataclasses.dataclass
 class ProcessedStreams:
     position_velocity: pd.DataFrame
-    lickometer: ProcessedLickometer
+    lickometer: Optional[ProcessedLickometer]
     sniff_ipi_frequency: Optional[pd.DataFrame]
 
 
