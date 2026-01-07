@@ -64,6 +64,7 @@ def process_sniff_detector(
     *,
     notch_filter_freq: t.Optional[float] = 60.0,
 ) -> t.Optional[pd.DataFrame]:
+    from contraqctor.qc.harp import sniff_detector
     from scipy.interpolate import interp1d
     from scipy.signal import butter, filtfilt, find_peaks, iirnotch
 
@@ -81,6 +82,17 @@ def process_sniff_detector(
         )
     except Exception as e:
         logging.warning(f"Failed to load SniffDetector data: {e}")
+        return None
+
+    suite = sniff_detector.HarpSniffDetectorTestSuite(dataset.at("Behavior").at("HarpSniffDetector"))
+    physiological_relevance_test = suite.test_physiological_relevance()
+    signal_test = suite.test_signal_quality()
+    if not (signal_test.status == physiological_relevance_test.status == contraqctor.qc.Status.PASSED):
+        logging.warning(
+            "Sniff detector data quality tests failed: "
+            f"Signal Quality Test - {signal_test.result}, "
+            f"Physiological Relevance Test - {physiological_relevance_test.result}"
+        )
         return None
 
     t = data.index.values
@@ -110,12 +122,30 @@ def process_sniff_detector(
 
 
 def process_lickometer(
-    dataset: contraqctor.contract.Dataset, *, refractory_period_s: float = 0.02, dt_resample: float = 0.1
+    dataset: contraqctor.contract.Dataset, *, refractory_period_s: float = 0.05, dt_resample: float = 0.1
 ) -> ProcessedLickometer:
+    from contraqctor.qc.harp import lickety_split
+
     lickometer = dataset.at("Behavior").at("HarpLickometer").load().at("LickState").load().data.copy()
     lickometer = lickometer[lickometer["MessageType"] == "EVENT"]["Channel0"]
     lick_onsets = lickometer[(lickometer) & (~lickometer.shift(1, fill_value=False))].index
     if len(lick_onsets) == 0:
+        return ProcessedLickometer(
+            onsets=np.array([]),
+            frequency=pd.DataFrame(
+                {"frequency": []},
+                index=pd.Index([], name="Seconds"),
+            ),
+        )
+
+    suite = lickety_split.HarpLicketySplitTestSuite(
+        dataset.at("Behavior").at("HarpLickometer"), lick_refractory_period=refractory_period_s
+    )
+    test_minimum_lick_rate = suite.test_minimum_lick_rate()
+    if test_minimum_lick_rate.status != contraqctor.qc.Status.PASSED:
+        logging.warning(
+            f"Lickometer data quality test failed: Minimum Lick Rate Test - {test_minimum_lick_rate.result}"
+        )
         return ProcessedLickometer(
             onsets=np.array([]),
             frequency=pd.DataFrame(
@@ -432,7 +462,7 @@ def aligned_to_grouped_by(
     _summary_data: dict[tuple[t.Any, ...], list[pd.DataFrame]] = {}
 
     for session_idx, (session_timestamp_df, session_timeseries) in enumerate(zip(timestamp_df, timeseries)):
-        for _tup, df in session_timestamp_df.groupby(by):
+        for _tup, df in session_timestamp_df.groupby(by, observed=False):
             if timestamp_column is not None:
                 timestamps = df[timestamp_column].to_numpy()
             else:
@@ -483,8 +513,10 @@ def summarize_aligned_to(
     data_column_name = data_column_name or aligned.columns[0]
 
     n_chunks = aligned[_extra_column_index_name].max()
+    if n_chunks is None or np.isnan(n_chunks):
+        n_chunks = 0
     binned_data = np.full((len(new_index), n_chunks + 1), np.nan)
-    for i_chunk, chunk_df in aligned.groupby(_extra_column_index_name):
+    for i_chunk, chunk_df in aligned.groupby(_extra_column_index_name, observed=True):
         binned_data[:, i_chunk] = np.interp(
             new_index.values, chunk_df[_extra_column_timestamp_name].values, chunk_df[data_column_name].values
         )
