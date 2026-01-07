@@ -274,6 +274,15 @@ def plot_aligned_to_grouped_by(
         agg_spread_kwarg_modifier=agg_spread_kwarg_modifier,
         ax=ax,
     )
+    if isinstance(timeseries, pd.Series):
+        timeseries_name = timeseries.name
+    elif isinstance(timeseries, list) and len(timeseries) > 0:
+        timeseries_name = timeseries[0].name
+    else:
+        timeseries_name = None
+
+    if timeseries_name is not None:
+        ax.set_ylabel(timeseries_name)
     return (ax.figure, ax)
 
 
