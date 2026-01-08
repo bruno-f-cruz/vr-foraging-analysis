@@ -142,3 +142,14 @@ def enrich_with_reward_rate(session: SessionDataset, exponential_decay: float = 
             trials.loc[mask, "is_rewarded"].ewm(alpha=exponential_decay, adjust=False).mean()
         )
     return trials
+
+
+def enrich_with_rolling_choice_preference(session: SessionDataset, win_size: int = 5) -> pd.DataFrame:
+    """Calculate rolling choice preference for high reward patches.
+    It uses a rolling window to compute the proportion of choices made to high reward patches.
+    """
+    trials = session.trials
+    for patch_index in trials["patch_index"].unique():
+        mask = trials["patch_index"] == patch_index
+        choice_preference = trials.loc[mask, "is_choice"].rolling(window=win_size, min_periods=1).mean()
+        trials.loc[mask, "rolling_choice_preference"] = choice_preference

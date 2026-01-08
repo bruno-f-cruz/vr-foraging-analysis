@@ -48,6 +48,7 @@ def calculate_choice_matrix(
     *,
     trial_window: t.Tuple[int, int] = (-10, 30),
     block_switch_filter: t.Literal["same", "different", "both"] = "same",
+    column_name: str = "is_choice",
 ) -> tuple[np.ndarray, pd.DataFrame]:
     """Calculate choice matrices around block switches for plotting. Returns a 3D numpy array of shape (num_switches, num_trials_in_window, 2) and a DataFrame of switch trials with original indices."""
     is_patch_low_after_zip = (0, 1)  # high, low
@@ -86,7 +87,7 @@ def calculate_choice_matrix(
             slice_from_array_start = -(trial_window[0] + min_idx) - 1
             slice_from_array_end = slice_from_array_start + len(trials_to_take)
             switch_choice_data[i_switch, slice_from_array_start:slice_from_array_end, is_patch_low_after] = (
-                trials_to_take["is_choice"].values
+                trials_to_take[column_name].values
             )
 
     switch_trials_df = all_trials_df.loc[switch_indices]
