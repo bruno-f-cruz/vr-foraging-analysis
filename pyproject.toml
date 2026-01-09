@@ -35,3 +35,4 @@ extend-select = ['Q', 'RUF100', 'C90', 'I']
 extend-ignore = []
 mccabe = { max-complexity = 14 }
 pydocstyle = { convention = 'google' }
+ignore= ["E712"]
