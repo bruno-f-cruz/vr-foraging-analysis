@@ -1,17 +1,70 @@
-root_path: ['\\allen\aind\scratch\vr-foraging\data', '\\allen\aind\stage\vr-foraging\data']
-subject_filters:
-  "808619":
-    start_date: 2025-10-29
-  "808728":
-    start_date: 2025-10-29
-  "789917":
-    start_date: 2025-10-29
-  #"808619":
-    #start_date: 2025-10-01
-  #"808728":
-    #start_date: 2025-10-01
-  #"789917":
-    #start_date: 2025-10-01
+root_path: ['C:\Data\single-site-dataset']
+root_derived_path: './derived'
 processing_settings:
   downsample_position_to: 60
   lickometer_refractory_period_s: 0.02
+sessions_to_load:
+  - {session_id: 'behavior_789917_2025-10-29_19-26-21', crop_max_trials: 310}
+  - {session_id: 'behavior_789917_2025-10-30_20-09-12', crop_max_trials: 260}
+  - {session_id: 'behavior_789917_2025-10-31_21-40-25', crop_max_trials: 220}
+  - {session_id: 'behavior_789917_2025-11-06_21-05-05', crop_max_trials: 220}
+  - {session_id: 'behavior_789917_2025-11-07_21-18-38', crop_max_trials: 150}
+  - {session_id: 'behavior_789917_2025-11-11_20-54-26', crop_max_trials: 150}
+  - {session_id: 'behavior_789917_2025-11-14_21-38-38', crop_max_trials: 280}
+  - {session_id: 'behavior_789917_2025-11-17_21-11-53', crop_max_trials: 280}
+  - {session_id: 'behavior_789917_2025-11-18_21-32-50', crop_max_trials: 260}
+  - {session_id: 'behavior_789917_2025-11-19_21-33-05', crop_max_trials: 270}
+  - {session_id: 'behavior_789917_2025-11-21_21-17-34', crop_max_trials: 260}
+  - {session_id: 'behavior_789917_2025-11-24_20-17-00', crop_max_trials: 260}
+  - {session_id: 'behavior_789917_2025-11-25_20-46-34', crop_max_trials: 345}
+  - {session_id: 'behavior_789917_2025-11-26_20-55-27', crop_max_trials: 310}
+  - {session_id: 'behavior_789917_2025-12-02_20-52-33', crop_max_trials: 420}
+  - {session_id: 'behavior_789917_2025-12-03_21-11-55', crop_max_trials: 365}
+  - {session_id: 'behavior_789917_2025-12-04_20-51-09', crop_max_trials: 400}
+  - {session_id: 'behavior_789917_2025-12-05_21-41-33', crop_max_trials: 480}
+  - {session_id: 'behavior_789917_2025-12-08_21-22-40', crop_max_trials: 400}
+  - {session_id: 'behavior_789917_2025-12-09_21-04-47', crop_max_trials: 350}
+  - {session_id: 'behavior_789917_2025-12-10_20-40-54', crop_max_trials: 390}
+  - {session_id: 'behavior_789917_2025-12-11_20-32-41', crop_max_trials: 330}
+  - {session_id: 'behavior_789917_2025-12-12_21-11-40', crop_max_trials: 400}
+  - {session_id: 'behavior_789917_2025-12-15_20-54-58', crop_max_trials: 250}
+  - {session_id: 'behavior_789917_2025-12-16_21-08-15', crop_max_trials: 300}
+  - {session_id: 'behavior_789917_2025-12-17_20-55-03', crop_max_trials: 350}
+  - {session_id: 'behavior_808619_2025-10-20_20-33-39', crop_max_trials: 170}
+  - {session_id: 'behavior_808619_2025-10-23_20-04-31', crop_max_trials: 175}
+  - {session_id: 'behavior_808619_2025-10-24_20-44-22', crop_max_trials: 175}
+  - {session_id: 'behavior_808619_2025-10-28_19-45-54', crop_max_trials: 210}
+  - {session_id: 'behavior_808619_2025-10-29_19-27-04', crop_max_trials: 150}
+  - {session_id: 'behavior_808619_2025-10-30_20-08-43', crop_max_trials: 175}
+  - {session_id: 'behavior_808619_2025-10-31_21-40-31', crop_max_trials: 140}
+  - {session_id: 'behavior_808619_2025-11-04_21-10-02', crop_max_trials: 175}
+  - {session_id: 'behavior_808619_2025-11-05_20-48-54', crop_max_trials: 180}
+  - {session_id: 'behavior_808619_2025-11-06_21-05-13', crop_max_trials: 170}
+  - {session_id: 'behavior_808619_2025-11-07_21-17-56', crop_max_trials: 200}
+  - {session_id: 'behavior_808728_2025-10-20_20-33-47', crop_max_trials: 150}
+  - {session_id: 'behavior_808728_2025-10-22_19-48-56', crop_max_trials: 110}
+  - {session_id: 'behavior_808728_2025-10-28_19-46-11', crop_max_trials: 170}
+  - {session_id: 'behavior_808728_2025-10-29_19-27-21', crop_max_trials: 140}
+  - {session_id: 'behavior_808728_2025-10-30_20-35-44', crop_max_trials: 190}
+  - {session_id: 'behavior_808728_2025-10-31_21-39-05', crop_max_trials: 260}
+  - {session_id: 'behavior_808728_2025-11-05_20-48-43', crop_max_trials: 140}
+  - {session_id: 'behavior_808728_2025-11-10_20-56-13', crop_max_trials: 160}
+  - {session_id: 'behavior_808728_2025-11-18_21-31-29', crop_max_trials: 320}
+  - {session_id: 'behavior_808728_2025-11-19_21-31-05', crop_max_trials: 390}
+  - {session_id: 'behavior_808728_2025-11-20_21-28-20', crop_max_trials: 420}
+  - {session_id: 'behavior_808728_2025-11-21_21-17-05', crop_max_trials: 350}
+  - {session_id: 'behavior_808728_2025-11-24_20-21-25', crop_max_trials: 365}
+  - {session_id: 'behavior_808728_2025-11-25_20-45-49', crop_max_trials: 350}
+  - {session_id: 'behavior_808728_2025-11-26_20-55-05', crop_max_trials: 250}
+  - {session_id: 'behavior_808728_2025-12-02_20-50-57', crop_max_trials: 300}
+  - {session_id: 'behavior_808728_2025-12-03_20-56-35', crop_max_trials: 270}
+  - {session_id: 'behavior_808728_2025-12-04_20-50-45', crop_max_trials: 250}
+  - {session_id: 'behavior_808728_2025-12-05_21-41-55', crop_max_trials: 270}
+  - {session_id: 'behavior_808728_2025-12-08_21-22-35', crop_max_trials: 285}
+  - {session_id: 'behavior_808728_2025-12-09_20-52-25', crop_max_trials: 260}
+  - {session_id: 'behavior_808728_2025-12-10_20-40-41', crop_max_trials: 225}
+  - {session_id: 'behavior_808728_2025-12-11_20-36-58', crop_max_trials: 240}
+  - {session_id: 'behavior_808728_2025-12-12_21-11-34', crop_max_trials: 250}
+  - {session_id: 'behavior_808728_2025-12-15_21-19-25', crop_max_trials: 250}
+  - {session_id: 'behavior_808728_2025-12-16_21-07-48', crop_max_trials: 200}
+  - {session_id: 'behavior_808728_2025-12-17_20-54-33', crop_max_trials: 250}

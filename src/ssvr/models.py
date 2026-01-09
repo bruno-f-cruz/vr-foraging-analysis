@@ -1,13 +1,15 @@
-import pydantic_settings
-from pydantic import Field, BaseModel
-from pathlib import Path
+import dataclasses
 import datetime
+from pathlib import Path
 from typing import Optional
+
+import numpy as np
+import pandas as pd
+import pydantic_settings
+import semver
 from aind_behavior_vr_foraging import __semver__ as vrf_version
 from aind_behavior_vr_foraging import task_logic as vrf_task
-import dataclasses
-import pandas as pd
-import numpy as np
+from pydantic import BaseModel, Field, field_validator
 
 
 class ProcessingSettings(BaseModel):
@@ -16,16 +18,21 @@ class ProcessingSettings(BaseModel):
 
 
 class DataLoadingSettings(pydantic_settings.BaseSettings, yaml_file="sessions.yaml"):
-    root_path: list[Path] = Field(..., description="Root path to the data directory")
-    subject_filters: dict[str, "FilterOn"] = Field(
-        default_factory=dict, description="Dictionary of subject filters"
-    )
-    dataset_version: str = Field(
-        default=vrf_version, description="Version of the dataset to use"
-    )
-    processing_settings: "ProcessingSettings" = Field(
-        default=ProcessingSettings(), validate_default=True
-    )
+    root_path: list[Path] = Field(description="Root path to the data directory")
+    root_derived_path: Path = Field(Path("./derived"), description="Root path to the derived data directory")
+    dataset_version: str = Field(default=vrf_version, description="Version of the dataset to use")
+    processing_settings: "ProcessingSettings" = Field(default=ProcessingSettings(), validate_default=True)
+    sessions_to_load: list["SessionToLoad"] = Field(default_factory=list, description="List of sessions to load")
+
+    @field_validator("sessions_to_load", mode="after")
+    @classmethod
+    def ensure_unique_sessions(cls, v: list["SessionToLoad"]) -> list["SessionToLoad"]:
+        """Ensure that session IDs are unique in the sessions_to_load list"""
+        session_ids = [entry.session_id for entry in v]
+        if len(session_ids) != len(set(session_ids)):
+            duplicates = set([x for x in session_ids if session_ids.count(x) > 1])
+            raise ValueError(f"Duplicate session IDs found in sessions_to_load: {duplicates}")
+        return v
 
     @classmethod
     def settings_customise_sources(
@@ -46,19 +53,9 @@ class DataLoadingSettings(pydantic_settings.BaseSettings, yaml_file="sessions.ya
         )
 
 
-class FilterOn(BaseModel):
-    start_date: Optional[datetime.date] = Field(
-        default=None,
-        description="Start date to filter session. If None, no filtering on start date.",
-    )
-    end_date: Optional[datetime.date] = Field(
-        default=None,
-        description="End date to filter session. If None, no filtering on end date.",
-    )
-    session_ids: Optional[list[str]] = Field(
-        default=None,
-        description="List of session IDs to filter. If None, no filtering on session IDs.",
-    )
+class SessionToLoad(BaseModel):
+    session_id: str
+    crop_max_trials: Optional[int] = None  # If set, only load up to this many trials
 
 
 @dataclasses.dataclass
@@ -67,6 +64,7 @@ class SessionInfo:
     session_id: str
     date: datetime.date
     data_path: Path
+    version: semver.Version
 
 
 @dataclasses.dataclass
@@ -79,12 +77,21 @@ class Trial:
     is_rewarded: Optional[bool]
     is_choice: bool
     p_reward: float
+    stop_time: Optional[float]
+    longest_stop_duration: Optional[float]
+
+
+@dataclasses.dataclass
+class ProcessedLickometer:
+    onsets: np.ndarray
+    frequency: pd.DataFrame
 
 
 @dataclasses.dataclass
 class ProcessedStreams:
     position_velocity: pd.DataFrame
-    lick_onsets: np.ndarray
+    lickometer: Optional[ProcessedLickometer]
+    sniff_ipi_frequency: Optional[pd.DataFrame]
 
 
 @dataclasses.dataclass
@@ -93,6 +100,7 @@ class SessionMetrics:
     reward_site_count: int  # number of reward sites observed
     stop_count: int  # number of stops/harvest attempts
     reward_count: int  # number of collected reward events
+    session_duration: datetime.timedelta  # duration of the session
     p_stop_per_odor: dict[int, float]  # probability of stopping per odor
     total_reward_ml: float = 0.0  # total reward collected in mL
 

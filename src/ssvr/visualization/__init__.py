@@ -1,15 +1,15 @@
-from matplotlib import pyplot as plt
-import numpy as np
-from aind_behavior_vr_foraging import task_logic as vrf_task
-from typing import Optional, Literal, Any, Callable
-from .dataset import SessionDataset
-import pandas as pd
 import logging
-from functools import partial
 from contextlib import contextmanager
-
-
 from itertools import cycle
+from typing import Any, Literal, Optional
+
+import numpy as np
+import pandas as pd
+from aind_behavior_vr_foraging import task_logic as vrf_task
+from matplotlib import pyplot as plt
+
+from ..dataset import SessionDataset
+from ..processing import aligned_to_grouped_by, summarize_grouped_by
 
 logger = logging.getLogger(__name__)
 
@@ -68,9 +68,7 @@ def plot_ethogram(
     if ax is None:
         fig, ax = plt.subplots(figsize=kwargs.pop("figsize", (6, 4)))
 
-    mask = (dataset.sites["t_end"] >= window_start) & (
-        dataset.sites["t_start"] <= window_end
-    )
+    mask = (dataset.sites["t_end"] >= window_start) & (dataset.sites["t_start"] <= window_end)
     for i, row in dataset.sites[mask].iterrows():
         color = get_color_from_site(row["site_label"], row["patch_idx"])
         ax.axvspan(
@@ -108,8 +106,8 @@ def plot_ethogram(
         s=100,
     )
     ax2.scatter(
-        dataset.processed_streams.lick_onsets,
-        np.ones_like(dataset.processed_streams.lick_onsets) * 0.6,
+        dataset.processed_streams.lickometer.onsets,
+        np.ones_like(dataset.processed_streams.lickometer.onsets) * 0.6,
         color="green",
         label="Licks",
         marker="|",
@@ -123,9 +121,7 @@ def plot_ethogram(
     # legend 1
     handles, labels = ax.get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
-    ax.legend(
-        by_label.values(), by_label.keys(), bbox_to_anchor=(-0.05, 1), loc="upper right"
-    )
+    ax.legend(by_label.values(), by_label.keys(), bbox_to_anchor=(-0.05, 1), loc="upper right")
 
     # legend 2
     ax2.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
@@ -160,9 +156,7 @@ def plot_aligned_to(
     snippets = []
     for ts in timestamps:
         _win = np.array(event_window) + ts
-        samples_in_window = timeseries.index[
-            (timeseries.index >= _win[0]) & (timeseries.index <= _win[1])
-        ]
+        samples_in_window = timeseries.index[(timeseries.index >= _win[0]) & (timeseries.index <= _win[1])]
         snippet = timeseries.loc[samples_in_window]
         snippets.append(snippet)
         plot_method(
@@ -193,113 +187,103 @@ def _get_default_plot_kwargs(cmap: cycle) -> dict[str, Any]:
     }
 
 
-def plot_aligned_to_grouped_by(
-    timestamp_df: pd.DataFrame,
-    timeseries: pd.Series,
-    by: list[Any] | None = None,
-    timestamp_column: str | None = None,
+def plot_summarized_grouped_by(
+    summarized_df: dict[tuple[Any, ...], pd.DataFrame],
+    by_labels: list[str] | None = None,
     plot_kwargs: Optional[dict[tuple[Any, ...], dict[str, Any]]] = None,
     *,
     agg_plot_kwarg_modifier: dict[str, Any] = {"alpha": 1, "linewidth": 2},
     agg_spread_kwarg_modifier: dict[str, Any] = {"alpha": 0.1, "linewidth": 0},
-    event_window: tuple[float, float] = (-1, 1),
     ax: Optional[plt.Axes] = None,
-    bin_width: float = 0.025,
-    agg_fnc: Callable[[np.ndarray], np.ndarray] = partial(np.nanmean, axis=1),
-    agg_spread_fnc: Callable[[np.ndarray], np.ndarray] = partial(
-        np.nanpercentile, q=[2.5, 97.5], axis=1
-    ),
     **kwargs,
-) -> tuple[plt.Axes, dict[Any, pd.DataFrame]]:
+) -> plt.Axes:
     _ax_passed = ax is not None
 
     _anonymous_cmap = _get_cycle_cmap(10)
 
-    by = by or []
     plot_kwargs = plot_kwargs or {}
+
+    if (by_labels is not None) and (
+        not all((len(by_labels) == len(_group_key)) for _group_key in summarized_df.keys())
+    ):
+        raise ValueError("Length of by_labels does not match length of group keys")
 
     if ax is None:
         fig, ax = plt.subplots(figsize=kwargs.pop("figsize", (6, 4)))
 
-    _summary_data = {}
-    for _tup, df in timestamp_df.groupby(by):
-        if timestamp_column is not None:
-            timestamps = df[timestamp_column].to_numpy()
-        else:
-            timestamps = df.index.to_numpy()
-
-        if _tup not in plot_kwargs:
-            logging.warning(
-                f"No plot_kwargs specified for group {_tup}, using defaults."
-            )
+    for _group_key, group_df in summarized_df.items():
+        if _group_key not in plot_kwargs:
+            logging.warning(f"No plot_kwargs specified for group {_group_key}, using defaults.")
             _these_plot_kwargs = _get_default_plot_kwargs(_anonymous_cmap)
         else:
-            _these_plot_kwargs = plot_kwargs[_tup]
+            _these_plot_kwargs = plot_kwargs[_group_key]
 
-        ax, data = plot_aligned_to(
-            timestamps,
-            timeseries,
-            event_window=event_window,
-            plot_kwargs=_these_plot_kwargs,
-            plot_func="plot",
-            ax=ax,
-        )
-        # normalize each snippet to event time
-        for d, onset in zip(data, timestamps):
-            d.index = d.index - onset
-        new_index = pd.Index(
-            np.arange(
-                min(s.index.min() for s in data),
-                max(s.index.max() for s in data),
-                bin_width,
-            ),
-        )
-
-        binned_data = np.full((len(new_index), len(data)), np.nan)
-
-        for i, s in enumerate(data):
-            binned_data[:, i] = np.interp(new_index, s.index, s.values)
-
-        binned_mean = agg_fnc(binned_data)
-        binned_spread = agg_spread_fnc(binned_data)
         ax.plot(
-            new_index,
-            binned_mean,
-            label=", ".join(f"{col}={val}" for col, val in zip(by, _tup))
-            if by
-            else str(_tup),
+            group_df.index,
+            group_df["mean"],
+            label=", ".join(f"{col}={val}" for col, val in zip(by_labels, _group_key))
+            if by_labels
+            else str(_group_key),
             **{**_these_plot_kwargs, **agg_plot_kwarg_modifier},
         )
         ax.fill_between(
-            new_index,
-            binned_spread[0],
-            binned_spread[1],
+            group_df.index,
+            group_df["lower_ci"],
+            group_df["upper_ci"],
             **{**_these_plot_kwargs, **agg_spread_kwarg_modifier},
         )
 
     if not _ax_passed:
         ax.axvline(0, color="k", linestyle="--", linewidth=1)
         ax.set_xlabel("Time from event (s)")
-        ax.set_ylabel(
-            str(
-                timeseries.columns[0]
-                if isinstance(timeseries, pd.DataFrame)
-                else timeseries.name
-            )
-        )
-        ax.set_xlim(event_window)
         ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left", borderaxespad=0.0)
+    return ax
 
-        df_result = pd.DataFrame(
-            {
-                "time": new_index,
-                "mean": binned_mean,
-                "lower": binned_spread[0],
-                "upper": binned_spread[1],
-            }
-        )
-        _summary_data[_tup] = df_result
-    return ax, _summary_data
+
+def plot_aligned_to_grouped_by(
+    timestamp_df: pd.DataFrame | list[pd.DataFrame],
+    timeseries: pd.Series | list[pd.Series],
+    by: list[Any] | None = None,
+    plot_kwargs: Optional[dict[tuple[Any, ...], dict[str, Any]]] = None,
+    *,
+    timestamp_column: str | None = None,
+    event_window: tuple[float, float] = (-1, 1),
+    time_bin_width: float = 0.025,
+    agg_plot_kwarg_modifier: dict[str, Any] = {"alpha": 1, "linewidth": 2},
+    agg_spread_kwarg_modifier: dict[str, Any] = {"alpha": 0.1, "linewidth": 0},
+    ax: Optional[plt.Axes] = None,
+) -> tuple[plt.Figure, plt.Axes]:
+    df_out, _ = aligned_to_grouped_by(
+        timestamp_df=timestamp_df,
+        timeseries=timeseries,
+        by=by,
+        timestamp_column=timestamp_column,
+        event_window=event_window,
+    )
+
+    summarized = summarize_grouped_by(
+        df_out,
+        time_bin_width=time_bin_width,
+    )
+
+    ax = plot_summarized_grouped_by(
+        summarized_df=summarized,
+        by_labels=by,
+        plot_kwargs=plot_kwargs,
+        agg_plot_kwarg_modifier=agg_plot_kwarg_modifier,
+        agg_spread_kwarg_modifier=agg_spread_kwarg_modifier,
+        ax=ax,
+    )
+    if isinstance(timeseries, pd.Series):
+        timeseries_name = timeseries.name
+    elif isinstance(timeseries, list) and len(timeseries) > 0:
+        timeseries_name = timeseries[0].name
+    else:
+        timeseries_name = None
+
+    if timeseries_name is not None:
+        ax.set_ylabel(timeseries_name)
+    return (ax.figure, ax)
 
 
 def plot_session_trials(
@@ -340,9 +324,7 @@ def plot_session_trials(
         rewarded_filter = (subset["is_choice"] == 1) & (subset["is_rewarded"] == 1)
         ax.scatter(
             subset[rewarded_filter].index,
-            subset[rewarded_filter]["patch_index"]
-            + subset[rewarded_filter]["is_choice"] * ys_gain * 2
-            + yy_offset,
+            subset[rewarded_filter]["patch_index"] + subset[rewarded_filter]["is_choice"] * ys_gain * 2 + yy_offset,
             color=patch_index_colormap[patch_index],
             label=patch_index,
             alpha=1,
