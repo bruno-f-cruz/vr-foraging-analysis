@@ -28,10 +28,23 @@ FEATURE_SPECS = [
     FeatureSpec("other_reward", "Other x Reward", "orange", "v"),
 ]
 
+# Type-specific feature structure (4 features per lag)
+TYPE_SPECIFIC_FEATURE_SPECS = [
+    FeatureSpec("same_choice", "Same Odor x Choice", "blue", "o"),
+    FeatureSpec("same_outcome", "Same Odor x Outcome", "green", "s"),
+    FeatureSpec("other_choice", "Other Odor x Choice", "orange", "^"),
+    FeatureSpec("other_outcome", "Other Odor x Outcome", "red", "d"),
+]
+
 
 def get_n_features_per_lag() -> int:
     """Returns the number of features per lag."""
     return len(FEATURE_SPECS)
+
+
+def get_n_type_specific_features_per_lag() -> int:
+    """Returns the number of features per lag for type-specific regression."""
+    return len(TYPE_SPECIFIC_FEATURE_SPECS)
 
 
 def get_feature_names_for_lag(k: int) -> t.List[str]:
@@ -321,6 +334,251 @@ def plot_regression_coefficients_with_ci(
     ax.set_ylabel("Coefficient Weight")
     ax.set_title(f"Logistic Regression Coefficients with {int(ci * 100)}% CI (β₀={mean_intercept:.3f})")
     ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+    ax.grid(True, alpha=0.3)
+    ax.axhline(0, color="black", linestyle=":", alpha=0.5)
+
+    plt.tight_layout()
+
+    return fig, ax
+
+
+def create_type_specific_design_matrix(trials_df: pd.DataFrame, n_back: int = 3) -> t.Tuple[pd.DataFrame, t.List[str]]:
+    """
+    Creates a design matrix where lags are specific to each trial type (patch).
+
+    For each lag k, we track:
+    - Last experienced same odor x choice
+    - Last experienced same odor x outcome
+    - Last experienced other odor x choice
+    - Last experienced other odor x outcome
+
+    Total: 4 regressors x n_back lags
+
+    For example, if predicting choice on current trial (Patch A) with history:
+      - B(rew), A(rew), A(not rew), B(rew), A (current)
+
+    Lag 0:
+      - same_choice = -1 (last A at position 2, choice was made = +1, but not rewarded)
+      - same_outcome = -1 (last A at position 2, not rewarded)
+      - other_choice = +1 (last B at position 3, choice was made)
+      - other_outcome = +1 (last B at position 3, rewarded)
+
+    Encodings:
+    - Choice y_t -> {0, 1} (no stop, stop), converted to {-1, +1}
+    - Outcome o_t = y_t · (2r_t - 1) -> {+1 (reward), -1 (no reward), 0 (no choice)}
+
+    Parameters
+    ----------
+    trials_df : pd.DataFrame
+        DataFrame containing 'session_id', 'patch_index', 'is_choice', 'is_rewarded'.
+    n_back : int
+        Number of lags.
+
+    Returns
+    -------
+    tuple[pd.DataFrame, list[str]]
+        Cleaned DataFrame with features (NaNs dropped) and list of feature column names.
+    """
+    df = trials_df.copy()
+
+    if "trial_number" in df.columns:
+        df = df.sort_values(["session_id", "trial_number"])
+
+    df["choice"] = df["is_choice"].fillna(False).astype(int)
+    is_rewarded = df["is_rewarded"].fillna(False).astype(int)
+    df["outcome"] = df["choice"] * (2 * is_rewarded - 1)
+
+    feature_cols = []
+    new_cols = {}
+
+    for k in range(n_back):
+        for spec in TYPE_SPECIFIC_FEATURE_SPECS:
+            col_name = f"lag_{k}_{spec.suffix}"
+            new_cols[col_name] = pd.Series(np.nan, index=df.index)
+            feature_cols.append(col_name)
+
+    for session_id, session_df in df.groupby("session_id"):
+        session_indices = session_df.index
+
+        patch_types = sorted(session_df["patch_index"].dropna().unique())
+
+        patch_trials = {}
+        for patch_type in patch_types:
+            patch_mask = session_df["patch_index"] == patch_type
+            patch_trials[patch_type] = session_df[patch_mask].index.tolist()
+
+        # For each trial, find the k-th most recent trial of same and other patch types
+        for current_idx in session_indices:
+            current_patch = df.loc[current_idx, "patch_index"]
+
+            if pd.isna(current_patch):
+                continue
+
+            same_patch_history = [idx for idx in patch_trials.get(current_patch, []) if idx < current_idx]
+
+            other_patch_history = []
+            for patch_type, indices in patch_trials.items():
+                if patch_type != current_patch:
+                    other_patch_history.extend([idx for idx in indices if idx < current_idx])
+            other_patch_history = sorted(other_patch_history)  # Sort to get most recent
+
+            for k in range(n_back):
+                # Same patch
+                if len(same_patch_history) > k:
+                    same_idx = same_patch_history[-(k + 1)]  # k-th most recent
+                    new_cols[f"lag_{k}_same_choice"].loc[current_idx] = df.loc[same_idx, "choice"] * 2 - 1
+                    new_cols[f"lag_{k}_same_outcome"].loc[current_idx] = df.loc[same_idx, "outcome"]
+
+                # Other patch
+                if len(other_patch_history) > k:
+                    other_idx = other_patch_history[-(k + 1)]  # k-th most recent
+                    new_cols[f"lag_{k}_other_choice"].loc[current_idx] = df.loc[other_idx, "choice"] * 2 - 1
+                    new_cols[f"lag_{k}_other_outcome"].loc[current_idx] = df.loc[other_idx, "outcome"]
+
+    new_features_df = pd.DataFrame(new_cols, index=df.index)
+    df = pd.concat([df, new_features_df], axis=1)
+
+    df_clean = df.dropna(subset=feature_cols)
+
+    return df_clean, feature_cols
+
+
+def plot_type_specific_coefficients(
+    model: LogisticRegression,
+    n_back: int,
+    patch_types: t.Optional[t.List[int]] = None,
+    ax: t.Optional[plt.Axes] = None,
+) -> t.Tuple[plt.Figure, plt.Axes]:
+    """
+    Plots coefficients for the type-specific logistic regression model.
+
+    Parameters
+    ----------
+    model : LogisticRegression
+        Fitted logistic regression model.
+    n_back : int
+        Number of lags.
+    patch_types : list[int], optional
+        List of patch type indices (not used, kept for compatibility).
+    ax : plt.Axes, optional
+        Axes to plot on.
+
+    Returns
+    -------
+    tuple[plt.Figure, plt.Axes]
+        Figure and Axes objects.
+    """
+    coefs = model.coef_[0]
+    intercept = model.intercept_[0]
+
+    n_features = get_n_type_specific_features_per_lag()
+    matrix = coefs.reshape(n_back, n_features)
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(12, 6))
+    else:
+        fig = ax.figure
+
+    lags = range(n_back)
+
+    for idx, spec in enumerate(TYPE_SPECIFIC_FEATURE_SPECS):
+        linestyle = "-" if "same" in spec.suffix.lower() else "--"
+        ax.plot(
+            lags,
+            matrix[:, idx],
+            label=spec.label,
+            color=spec.color,
+            linestyle=linestyle,
+            marker=spec.marker,
+            linewidth=2,
+        )
+
+    ax.set_xlabel("Lag k (trials back)")
+    ax.set_ylabel("Coefficient Weight")
+    ax.set_title(f"Type-Specific Logistic Regression Coefficients (β₀={intercept:.3f})")
+    ax.legend(loc="best")
+    ax.grid(True, alpha=0.3)
+    ax.axhline(0, color="black", linestyle=":", alpha=0.5)
+
+    plt.tight_layout()
+
+    return fig, ax
+
+
+def plot_type_specific_coefficients_with_ci(
+    coefs: np.ndarray,
+    intercepts: np.ndarray,
+    n_back: int,
+    patch_types: t.Optional[t.List[int]] = None,
+    ax: t.Optional[plt.Axes] = None,
+    ci: float = 0.95,
+) -> t.Tuple[plt.Figure, plt.Axes]:
+    """
+    Plots coefficients for type-specific regression with confidence intervals.
+
+    Parameters
+    ----------
+    coefs : np.ndarray
+        Array of shape (n_bootstraps, n_features) containing bootstrapped coefficients.
+    intercepts : np.ndarray
+        Array of shape (n_bootstraps,) containing bootstrapped intercepts.
+    n_back : int
+        Number of lags.
+    patch_types : list[int], optional
+        List of patch type indices (not used, kept for compatibility).
+    ax : plt.Axes, optional
+        Axes to plot on.
+    ci : float
+        Confidence interval level (e.g., 0.95 for 95% CI).
+
+    Returns
+    -------
+    tuple[plt.Figure, plt.Axes]
+        Figure and Axes objects.
+    """
+    mean_coefs = np.mean(coefs, axis=0)
+    mean_intercept = np.mean(intercepts)
+
+    lower_percentile = (1 - ci) / 2 * 100
+    upper_percentile = (1 + ci) / 2 * 100
+
+    ci_lower = np.percentile(coefs, lower_percentile, axis=0)
+    ci_upper = np.percentile(coefs, upper_percentile, axis=0)
+
+    n_features = get_n_type_specific_features_per_lag()
+    mean_matrix = mean_coefs.reshape(n_back, n_features)
+    ci_lower_matrix = ci_lower.reshape(n_back, n_features)
+    ci_upper_matrix = ci_upper.reshape(n_back, n_features)
+
+    yerr_lower = mean_matrix - ci_lower_matrix
+    yerr_upper = ci_upper_matrix - mean_matrix
+    yerr_matrix = np.stack([yerr_lower.T, yerr_upper.T])
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(12, 6))
+    else:
+        fig = ax.figure
+
+    lags = range(n_back)
+
+    for idx, spec in enumerate(TYPE_SPECIFIC_FEATURE_SPECS):
+        linestyle = "-" if "same" in spec.suffix.lower() else "--"
+        ax.errorbar(
+            lags,
+            mean_matrix[:, idx],
+            yerr=yerr_matrix[:, idx, :],
+            label=spec.label,
+            color=spec.color,
+            linestyle=linestyle,
+            marker=spec.marker,
+            capsize=4,
+            linewidth=2,
+        )
+
+    ax.set_xlabel("Lag k (trials back)")
+    ax.set_ylabel("Coefficient Weight")
+    ax.set_title(f"Type-Specific Logistic Regression with {int(ci * 100)}% CI (β₀={mean_intercept:.3f})")
+    ax.legend(loc="best")
     ax.grid(True, alpha=0.3)
     ax.axhline(0, color="black", linestyle=":", alpha=0.5)
 
