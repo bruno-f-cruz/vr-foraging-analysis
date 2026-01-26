@@ -105,14 +105,15 @@ def plot_ethogram(
         marker="|",
         s=100,
     )
-    ax2.scatter(
-        dataset.processed_streams.lickometer.onsets,
-        np.ones_like(dataset.processed_streams.lickometer.onsets) * 0.6,
-        color="green",
-        label="Licks",
-        marker="|",
-        s=50,
-    )
+    if dataset.processed_streams.lickometer is not None:
+        ax2.scatter(
+            dataset.processed_streams.lickometer.onsets,
+            np.ones_like(dataset.processed_streams.lickometer.onsets) * 0.6,
+            color="green",
+            label="Licks",
+            marker="|",
+            s=50,
+        )
     ax.set_xlabel("Time(s)")
     ax.set_ylabel("Velocity (cm/s)")
     ax2.set_ylabel("Events")
